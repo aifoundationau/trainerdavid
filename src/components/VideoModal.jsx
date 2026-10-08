@@ -1,0 +1,182 @@
+import React, { useEffect } from 'react';
+import { X, Play, CheckCircle2, ShieldCheck, Dumbbell, Sparkles, Crown, Check } from './Icons';
+
+export default function VideoModal({ video, isSubscriber, onClose, onOpenConsultation }) {
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
+  if (!video) return null;
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div 
+        className="modal-content" 
+        onClick={(e) => e.stopPropagation()}
+        style={{ maxWidth: '860px' }}
+      >
+        {/* Close Button Header */}
+        <div style={{
+          position: 'absolute',
+          top: '14px',
+          right: '14px',
+          zIndex: 30
+        }}>
+          <button 
+            onClick={onClose}
+            style={{
+              width: '36px',
+              height: '36px',
+              borderRadius: '50%',
+              background: 'rgba(0, 0, 0, 0.75)',
+              border: '1px solid rgba(255, 255, 255, 0.2)',
+              color: '#fff',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              backdropFilter: 'blur(8px)'
+            }}
+            aria-label="Close Modal"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* Embedded YouTube Video Player */}
+        <div className="video-player-container">
+          <iframe
+            src={`https://www.youtube.com/embed/${video.youtubeId}?autoplay=1&rel=0`}
+            title={video.title}
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+            allowFullScreen
+          />
+        </div>
+
+        {/* Modal Video Information & Coaching Notes */}
+        <div style={{ padding: '1.5rem 1.75rem' }}>
+          {/* Tags Row */}
+          <div style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            gap: '0.5rem',
+            marginBottom: '0.85rem'
+          }}>
+            <span className="badge badge-orange">{video.category}</span>
+            <span className="badge badge-lime">🎯 {video.muscleGroup}</span>
+            <span className="badge badge-cyan">⚙️ {video.equipment}</span>
+            <span className="badge">{video.difficulty}</span>
+          </div>
+
+          {/* Title */}
+          <h2 style={{
+            fontSize: '1.45rem',
+            fontWeight: 800,
+            marginBottom: '0.65rem',
+            color: '#fff'
+          }}>
+            {video.title}
+          </h2>
+
+          {/* Description */}
+          <p style={{
+            fontSize: '0.95rem',
+            color: 'var(--text-secondary)',
+            lineHeight: 1.6,
+            marginBottom: '1.25rem'
+          }}>
+            {video.shortDescription}
+          </p>
+
+          {/* Key Coaching Cues Checklist */}
+          {video.keyCues && video.keyCues.length > 0 && (
+            <div style={{
+              background: 'rgba(255, 255, 255, 0.04)',
+              border: '1px solid var(--border-subtle)',
+              borderRadius: '14px',
+              padding: '1.15rem',
+              marginBottom: '1.5rem'
+            }}>
+              <div style={{
+                fontFamily: 'var(--font-heading)',
+                fontSize: '0.95rem',
+                fontWeight: 700,
+                color: '#fff',
+                marginBottom: '0.65rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem'
+              }}>
+                <ShieldCheck size={17} color="var(--accent-orange)" />
+                <span>Trainer David's Biomechanical Checklist</span>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.5rem' }}>
+                {video.keyCues.map((cue, idx) => (
+                  <div key={idx} style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem', fontSize: '0.86rem', color: 'var(--text-secondary)' }}>
+                    <CheckCircle2 size={15} color="var(--accent-lime)" style={{ flexShrink: 0, marginTop: '2px' }} />
+                    <span>{cue}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Action Footer */}
+          <div style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '1rem',
+            paddingTop: '1rem',
+            borderTop: '1px solid var(--border-subtle)'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+              {isSubscriber ? (
+                <span className="badge badge-lime">
+                  <Crown size={13} />
+                  <span>Subscriber Full Access</span>
+                </span>
+              ) : (
+                <span className="badge badge-lime">
+                  <Check size={13} />
+                  <span>Unlocked (1 Token)</span>
+                </span>
+              )}
+              <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+                Unlimited replays for this workout session
+              </span>
+            </div>
+
+            <div style={{ display: 'flex', gap: '0.65rem' }}>
+              <button 
+                onClick={() => {
+                  onClose();
+                  onOpenConsultation(video.title);
+                }}
+                className="btn-primary"
+                style={{ padding: '0.55rem 1.15rem', fontSize: '0.85rem' }}
+              >
+                <Sparkles size={15} />
+                <span>Book Coaching</span>
+              </button>
+
+              <button 
+                onClick={onClose}
+                className="btn-secondary"
+                style={{ padding: '0.55rem 1.15rem', fontSize: '0.85rem' }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  );
+}
