@@ -33,12 +33,8 @@ export default function ServicesSection({ onBookService }) {
           </p>
         </div>
 
-        {/* Services Cards Grid */}
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
-          gap: '1.75rem'
-        }}>
+        {/* Services Cards Grid - Exactly 2 across, 2 rows */}
+        <div className="services-2x2-grid">
           {servicesData.map((svc) => {
             const Icon = iconMap[svc.icon] || Dumbbell;
             return (

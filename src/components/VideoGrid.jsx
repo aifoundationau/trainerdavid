@@ -1,10 +1,10 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Play, Search, Dumbbell, Clock, Check, ChevronRight, ChevronLeft, Coins, Crown } from './Icons';
+import { Play, Search, Dumbbell, Clock, Check, ChevronRight, ChevronLeft, Coins, Lock } from './Icons';
 import { videoLibrary, categories } from '../data/videos';
 
 const PAGE_SIZE = 9; // 3 videos across x 3 rows down = 9 videos max per panel
 
-export default function VideoGrid({ onSelectVideo, tokens, isSubscriber, unlockedVideoIds = [] }) {
+export default function VideoGrid({ onSelectVideo, tokens, unlockedVideoIds = [], user }) {
   const [selectedCategory, setSelectedCategory] = useState("All Workouts");
   const [searchQuery, setSearchQuery] = useState("");
   const [difficultyFilter, setDifficultyFilter] = useState("All");
@@ -65,7 +65,7 @@ export default function VideoGrid({ onSelectVideo, tokens, isSubscriber, unlocke
             </span>
             <span className="badge badge-cyan">
               <Coins size={12} />
-              <span>1 Token Per Video | Free for Subscribers</span>
+              <span>1 Token Per Video ($1 USD)</span>
             </span>
           </div>
 
@@ -78,7 +78,7 @@ export default function VideoGrid({ onSelectVideo, tokens, isSubscriber, unlocke
             EXPLORE 31+ VIDEO WORKOUTS
           </h2>
           <p style={{ fontSize: '1rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-            Step-by-step biomechanical execution, key cues, and muscle activation. Watch any video for 1 token, or enjoy unlimited free access with the Monthly All-Access Pass.
+            Step-by-step biomechanical execution, key cues, and muscle activation. Stream any video for 1 token. Tokens are set at USD $1 per token. Recharge tokens via your Admin page to stream.
           </p>
         </div>
 
@@ -219,7 +219,9 @@ export default function VideoGrid({ onSelectVideo, tokens, isSubscriber, unlocke
           <>
             <div className="grid-cards">
               {currentVideos.map((video) => {
-                const isUnlocked = isSubscriber || unlockedVideoIds.includes(video.id);
+                const isUnlocked = unlockedVideoIds.includes(video.id);
+                const hasTokens = tokens >= 1;
+                const canWatch = isUnlocked || (user && hasTokens);
 
                 return (
                   <div 
@@ -231,7 +233,7 @@ export default function VideoGrid({ onSelectVideo, tokens, isSubscriber, unlocke
                     <div 
                       className="postcard-thumb-wrap"
                       onClick={() => onSelectVideo(video)}
-                      title={`Watch: ${video.title}`}
+                      title={canWatch ? `Watch: ${video.title}` : !user ? "Sign in with Google required (1 Token)" : "1 Token required to watch"}
                     >
                       <img 
                         src={video.thumbnailUrl} 
@@ -250,9 +252,15 @@ export default function VideoGrid({ onSelectVideo, tokens, isSubscriber, unlocke
                         background: 'linear-gradient(to top, rgba(0,0,0,0.75) 0%, transparent 60%)'
                       }} />
 
-                      {/* Play Button Overlay */}
-                      <div className="play-overlay-btn">
-                        <Play size={22} fill="#fff" strokeWidth={0} />
+                      {/* Play or Lock Button Overlay */}
+                      <div className="play-overlay-btn" style={{
+                        background: canWatch ? 'rgba(255, 107, 0, 0.95)' : 'rgba(20, 24, 35, 0.9)'
+                      }}>
+                        {canWatch ? (
+                          <Play size={20} fill="#fff" strokeWidth={0} />
+                        ) : (
+                          <Lock size={18} color="#ff9e40" />
+                        )}
                       </div>
 
                       {/* Category Pill */}
@@ -330,15 +338,20 @@ export default function VideoGrid({ onSelectVideo, tokens, isSubscriber, unlocke
 
                       {/* Bottom Meta & Action Row */}
                       <div className="postcard-meta-row">
-                        {isSubscriber ? (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', color: 'var(--accent-lime)', fontSize: '0.75rem', fontWeight: 700 }}>
-                            <Crown size={14} />
-                            <span>Subscriber Free</span>
+                        {!user ? (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', color: 'var(--text-muted)', fontSize: '0.78rem' }}>
+                            <Lock size={13} color="var(--accent-orange)" />
+                            <span>1 Token • Sign In</span>
                           </div>
                         ) : isUnlocked ? (
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', color: 'var(--accent-lime)', fontSize: '0.75rem', fontWeight: 700 }}>
                             <Check size={14} />
                             <span>Unlocked</span>
+                          </div>
+                        ) : !hasTokens ? (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', color: '#f87171', fontSize: '0.78rem', fontWeight: 600 }}>
+                            <Lock size={13} color="#f87171" />
+                            <span>0 Tokens</span>
                           </div>
                         ) : (
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', color: '#f59e0b', fontSize: '0.78rem', fontWeight: 700 }}>
@@ -349,15 +362,36 @@ export default function VideoGrid({ onSelectVideo, tokens, isSubscriber, unlocke
 
                         <button 
                           onClick={() => onSelectVideo(video)}
-                          className="btn-primary"
+                          className={canWatch ? "btn-primary" : "btn-secondary"}
                           style={{
                             padding: '0.42rem 0.9rem',
                             fontSize: '0.8rem',
-                            gap: '0.3rem'
+                            gap: '0.35rem',
+                            display: 'flex',
+                            alignItems: 'center'
                           }}
                         >
-                          <span>{isUnlocked ? 'Watch Video' : 'Watch (1 Token)'}</span>
-                          <Play size={12} fill="#fff" />
+                          {!user ? (
+                            <>
+                              <Lock size={12} color="#ff9e40" />
+                              <span>Sign In (1 Token)</span>
+                            </>
+                          ) : !canWatch ? (
+                            <>
+                              <Lock size={12} color="#ff9e40" />
+                              <span>1 Token Needed</span>
+                            </>
+                          ) : isUnlocked ? (
+                            <>
+                              <span>Watch Video</span>
+                              <Play size={12} fill="#fff" />
+                            </>
+                          ) : (
+                            <>
+                              <span>Watch (1 Token)</span>
+                              <Play size={12} fill="#fff" />
+                            </>
+                          )}
                         </button>
                       </div>
                     </div>

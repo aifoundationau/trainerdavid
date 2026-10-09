@@ -62,54 +62,31 @@ export const servicesData = [
   }
 ];
 
+// FitToken Recharge Bundles: 1 Token = USD $1
 export const tokenPackages = [
   {
-    id: "starter",
-    tokens: 25,
-    name: "Starter Pack",
-    price: 19,
+    id: "recharge-100",
+    tokens: 100,
+    name: "100 Tokens",
+    priceUsd: 100,
     popular: false,
-    perToken: "$0.76",
-    bonus: "",
-    description: "Watch 25 full video masterclasses at 1 token per video."
+    description: "Recharge 100 FitTokens at USD $1 per token. Stream 100 video masterclasses (1 token each)."
   },
   {
-    id: "pro",
-    tokens: 75,
-    name: "Transformation Pack",
-    price: 49,
+    id: "recharge-300",
+    tokens: 300,
+    name: "300 Tokens",
+    priceUsd: 300,
     popular: true,
-    perToken: "$0.65",
-    bonus: "+15 Bonus Tokens",
-    description: "Most popular: 90 total tokens, perfect towards your Monthly All-Access Pass."
+    description: "Recharge 300 FitTokens at USD $1 per token. Stream 300 video masterclasses (1 token each)."
   },
   {
-    id: "elite",
-    tokens: 200,
-    name: "Elite Athlete Pack",
-    price: 119,
+    id: "recharge-600",
+    tokens: 600,
+    name: "600 Tokens",
+    priceUsd: 600,
     popular: false,
-    perToken: "$0.59",
-    bonus: "+50 Bonus Tokens & Priority Booking",
-    description: "250 total tokens: unlocks over 2.5 months of full Monthly All-Access streaming."
+    description: "Recharge 600 FitTokens at USD $1 per token. Stream 600 video masterclasses (1 token each)."
   }
 ];
 
-export const membershipTiers = [
-  {
-    id: "monthly-all-access",
-    name: "Monthly All-Access Pass",
-    tokensPerMonth: 99,
-    priceDisplay: "99 Tokens",
-    period: "/ month",
-    description: "Unlimited streaming of all 31+ instructional training videos. All videos are completely free for active subscribers.",
-    features: [
-      "All 31+ workout videos completely free to watch",
-      "No per-video token deductions while subscribed",
-      "Step-by-step coaching cues & muscle isolation guides",
-      "Immediate access to all new workout video drops",
-      "Priority consultation booking with Trainer David",
-      "Cancel anytime with one click"
-    ]
-  }
-];

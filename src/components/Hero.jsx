@@ -1,5 +1,5 @@
 import React from 'react';
-import { Play, Sparkles, ShieldCheck, Flame, Award, CheckCircle2, ChevronRight, Coins, Crown } from './Icons';
+import { Play, Sparkles, ShieldCheck, Flame, Award, CheckCircle2, ChevronRight, Coins } from './Icons';
 
 export default function Hero({ onExploreWorkouts, onOpenTokenStore, onOpenConsultation }) {
   return (
@@ -24,8 +24,8 @@ export default function Hero({ onExploreWorkouts, onOpenTokenStore, onOpenConsul
               <span>1 Token Per Video</span>
             </span>
             <span className="badge badge-lime">
-              <Crown size={13} />
-              <span>Monthly All-Access: 99 Tokens</span>
+              <Coins size={13} />
+              <span>1 Token = USD $1</span>
             </span>
           </div>
 
@@ -110,10 +110,10 @@ export default function Hero({ onExploreWorkouts, onOpenTokenStore, onOpenConsul
 
             <div>
               <div style={{ fontSize: '1.65rem', fontWeight: 800, color: 'var(--accent-lime)', fontFamily: 'var(--font-heading)' }}>
-                99 Tokens
+                USD $1
               </div>
               <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', fontWeight: 500 }}>
-                All-Access Pass / Mo
+                Fixed Token Price
               </div>
             </div>
           </div>
@@ -261,7 +261,7 @@ export default function Hero({ onExploreWorkouts, onOpenTokenStore, onOpenConsul
                 1 Token / Video
               </div>
               <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                Or 99 tokens/mo all-access
+                1 Token = USD $1.00
               </div>
             </div>
           </div>

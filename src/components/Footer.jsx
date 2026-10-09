@@ -1,7 +1,7 @@
 import React from 'react';
 import { Dumbbell, ShieldCheck, Heart, Mail, Phone, ExternalLink } from './Icons';
 
-export default function Footer({ onOpenTokenStore, onOpenConsultation }) {
+export default function Footer({ onOpenTokenStore, onOpenConsultation, onOpenAdmin, user, onOpenAuth }) {
   return (
     <footer style={{
       background: '#06070a',
@@ -69,6 +69,34 @@ export default function Footer({ onOpenTokenStore, onOpenConsultation }) {
               <li><button onClick={() => onOpenConsultation("Physiotherapy & Rehab Assessment")} style={{ background: 'none', color: 'inherit', textAlign: 'left', fontSize: 'inherit' }}>Physiotherapy & Rehab</button></li>
               <li><button onClick={() => onOpenConsultation("Sports Performance Coaching")} style={{ background: 'none', color: 'inherit', textAlign: 'left', fontSize: 'inherit' }}>Sports Performance</button></li>
               <li><button onClick={onOpenTokenStore} style={{ background: 'none', color: '#f59e0b', fontWeight: 700, textAlign: 'left', fontSize: 'inherit' }}>Recharge FitTokens 💎</button></li>
+              {onOpenAdmin && (
+                <li>
+                  <button 
+                    onClick={() => {
+                      if (!user && onOpenAuth) {
+                        onOpenAuth();
+                      } else {
+                        onOpenAdmin();
+                      }
+                    }} 
+                    style={{ 
+                      background: 'none', 
+                      color: user ? 'var(--accent-orange)' : 'var(--text-muted)', 
+                      fontWeight: 700, 
+                      textAlign: 'left', 
+                      fontSize: 'inherit',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.4rem',
+                      cursor: 'pointer'
+                    }}
+                    title={user ? `Coach Admin Support (Signed in as ${user.email})` : "Admin support is available once logged in through Google"}
+                  >
+                    <ShieldCheck size={14} color={user ? 'var(--accent-orange)' : 'var(--text-muted)'} />
+                    <span>{user ? 'Admin Support & Portal 🔒' : 'Admin Support (Google Login Required) 🔒'}</span>
+                  </button>
+                </li>
+              )}
             </ul>
           </div>
 

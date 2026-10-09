@@ -1,7 +1,16 @@
 import React, { useEffect } from 'react';
-import { X, Play, CheckCircle2, ShieldCheck, Dumbbell, Sparkles, Crown, Check } from './Icons';
+import { X, Play, CheckCircle2, ShieldCheck, Dumbbell, Sparkles, Check, Lock, Coins, Google } from './Icons';
 
-export default function VideoModal({ video, isSubscriber, onClose, onOpenConsultation }) {
+export default function VideoModal({ 
+  video, 
+  isUnlocked,
+  user,
+  tokens,
+  onClose, 
+  onOpenConsultation,
+  onOpenAuth,
+  onGoToAdminTokens
+}) {
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') onClose();
@@ -11,6 +20,8 @@ export default function VideoModal({ video, isSubscriber, onClose, onOpenConsult
   }, [onClose]);
 
   if (!video) return null;
+
+  const canPlay = isUnlocked;
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -38,7 +49,8 @@ export default function VideoModal({ video, isSubscriber, onClose, onOpenConsult
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              backdropFilter: 'blur(8px)'
+              backdropFilter: 'blur(8px)',
+              cursor: 'pointer'
             }}
             aria-label="Close Modal"
           >
@@ -46,15 +58,75 @@ export default function VideoModal({ video, isSubscriber, onClose, onOpenConsult
           </button>
         </div>
 
-        {/* Embedded YouTube Video Player */}
-        <div className="video-player-container">
-          <iframe
-            src={`https://www.youtube.com/embed/${video.youtubeId}?autoplay=1&rel=0`}
-            title={video.title}
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-            allowFullScreen
-          />
-        </div>
+        {/* Embedded YouTube Video Player OR Locked Overlay */}
+        {canPlay ? (
+          <div className="video-player-container">
+            <iframe
+              src={`https://www.youtube.com/embed/${video.youtubeId}?autoplay=1&rel=0`}
+              title={video.title}
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+              allowFullScreen
+            />
+          </div>
+        ) : (
+          <div style={{
+            aspectRatio: '16/9',
+            background: 'radial-gradient(circle at center, #151928 0%, #080a11 100%)',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '2rem',
+            textAlign: 'center',
+            borderBottom: '1px solid var(--border-subtle)'
+          }}>
+            <div style={{
+              width: '64px',
+              height: '64px',
+              borderRadius: '18px',
+              background: 'rgba(255, 107, 0, 0.14)',
+              border: '1px solid rgba(255, 107, 0, 0.35)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: 'var(--accent-orange)',
+              marginBottom: '1rem',
+              boxShadow: '0 8px 24px rgba(255, 107, 0, 0.2)'
+            }}>
+              <Lock size={30} />
+            </div>
+
+            <h3 style={{ fontSize: '1.35rem', fontWeight: 800, color: '#fff', marginBottom: '0.45rem' }}>
+              Token Required to Stream Masterclass
+            </h3>
+
+            <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', maxWidth: '460px', lineHeight: 1.55, marginBottom: '1.4rem' }}>
+              {!user 
+                ? "You are not signed in. You must sign in with your Google Email and have tokens in order to watch the workout videos (1 token per video)."
+                : "You have 0 tokens. You must have tokens in order to watch videos. Please recharge tokens on the Admin page (1 token = USD $1)."}
+            </p>
+
+            {!user ? (
+              <button 
+                onClick={() => { onClose(); if (onOpenAuth) onOpenAuth(); }}
+                className="btn-primary"
+                style={{ padding: '0.75rem 1.4rem', fontSize: '0.9rem', gap: '0.5rem' }}
+              >
+                <Google size={16} />
+                <span>Sign In with Google</span>
+              </button>
+            ) : (
+              <button 
+                onClick={() => { if (onGoToAdminTokens) onGoToAdminTokens(); }}
+                className="btn-primary"
+                style={{ padding: '0.75rem 1.4rem', fontSize: '0.9rem', gap: '0.5rem' }}
+              >
+                <Coins size={16} />
+                <span>Recharge Tokens on Admin Page</span>
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Modal Video Information & Coaching Notes */}
         <div style={{ padding: '1.5rem 1.75rem' }}>
@@ -136,17 +208,10 @@ export default function VideoModal({ video, isSubscriber, onClose, onOpenConsult
             borderTop: '1px solid var(--border-subtle)'
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-              {isSubscriber ? (
-                <span className="badge badge-lime">
-                  <Crown size={13} />
-                  <span>Subscriber Full Access</span>
-                </span>
-              ) : (
-                <span className="badge badge-lime">
-                  <Check size={13} />
-                  <span>Unlocked (1 Token)</span>
-                </span>
-              )}
+              <span className="badge badge-lime">
+                <Check size={13} />
+                <span>Unlocked (1 Token)</span>
+              </span>
               <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
                 Unlimited replays for this workout session
               </span>

@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Sparkles, CheckCircle, Calendar, Dumbbell, ShieldCheck } from './Icons';
+import { addAdminBooking, addAdminPurchase } from '../data/adminStore';
 
-export default function ConsultationModal({ isOpen, onClose, preselectedService }) {
+export default function ConsultationModal({ isOpen, onClose, preselectedService, user }) {
   const [formData, setFormData] = useState({
-    fullName: '',
-    email: '',
+    fullName: user?.name || '',
+    email: user?.email || '',
     phone: '',
     serviceType: preselectedService || '1-on-1 Online Personal Training',
     fitnessGoal: 'Muscle Hypertrophy & Strength',
@@ -13,6 +14,17 @@ export default function ConsultationModal({ isOpen, onClose, preselectedService 
 
   const [submitted, setSubmitted] = useState(false);
   const [errors, setErrors] = useState({});
+
+  useEffect(() => {
+    if (isOpen) {
+      setFormData(prev => ({
+        ...prev,
+        fullName: user?.name || prev.fullName,
+        email: user?.email || prev.email,
+        serviceType: preselectedService || prev.serviceType || '1-on-1 Online Personal Training'
+      }));
+    }
+  }, [isOpen, preselectedService, user]);
 
   if (!isOpen) return null;
 
@@ -33,6 +45,20 @@ export default function ConsultationModal({ isOpen, onClose, preselectedService 
     }
 
     setErrors({});
+    
+    // Save to Admin bookings store
+    addAdminBooking(formData);
+
+    // Also record in the Purchases & Master Transaction Ledger
+    addAdminPurchase({
+      clientName: formData.fullName,
+      clientEmail: formData.email,
+      itemName: `Booking: ${formData.serviceType}`,
+      category: 'Coaching Booking',
+      tokensOrCost: 'Consultation Inquiry',
+      status: 'Pending'
+    });
+
     setSubmitted(true);
 
     setTimeout(() => {

@@ -1,25 +1,36 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Navbar from './components/Navbar';
 import Hero from './components/Hero';
 import VideoGrid from './components/VideoGrid';
 import ServicesSection from './components/ServicesSection';
 import TrainerProfile from './components/TrainerProfile';
-import MembershipSection from './components/MembershipSection';
 import Footer from './components/Footer';
 import VideoModal from './components/VideoModal';
-import TokenStoreModal from './components/TokenStoreModal';
+import AuthModal from './components/AuthModal';
 import ConsultationModal from './components/ConsultationModal';
-import { Flame, Sparkles, X, Coins, Crown, CheckCircle2 } from './components/Icons';
+import AdminPage from './components/AdminPage';
+import { Flame, Sparkles, X, Coins, CheckCircle2 } from './components/Icons';
+import { getStoredUser, setStoredUser, clearStoredUser } from './utils/googleAuth';
+import { registerOrUpdateGoogleUser, addAdminPurchase, getRegisteredUsers } from './data/adminStore';
 
 export default function App() {
-  const [tokens, setTokens] = useState(15); // Initial user tokens
-  const [isSubscriber, setIsSubscriber] = useState(false); // Monthly All-Access Pass status
+  const [user, setUser] = useState(() => getStoredUser());
+  const [currentView, setCurrentView] = useState('public'); // 'public' | 'admin'
+  const [adminTab, setAdminTab] = useState('tokens'); // 'tokens' | 'users' | 'purchases'
+  const [tokens, setTokens] = useState(() => {
+    const savedUser = getStoredUser();
+    if (savedUser) {
+      const allUsers = getRegisteredUsers();
+      const match = allUsers.find(u => u.email?.toLowerCase() === savedUser.email?.toLowerCase());
+      return match ? (match.tokens ?? 0) : 0;
+    }
+    return 0; // Supporters start with 0 tokens
+  });
   const [unlockedVideoIds, setUnlockedVideoIds] = useState([]); // Videos unlocked for 1 token
   const [activeVideo, setActiveVideo] = useState(null);
-  const [isTokenStoreOpen, setIsTokenStoreOpen] = useState(false);
+  const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [isConsultationOpen, setIsConsultationOpen] = useState(false);
   const [selectedService, setSelectedService] = useState('1-on-1 Online Personal Training');
-  const [showLaunchBanner, setShowLaunchBanner] = useState(true);
   const [toastMessage, setToastMessage] = useState(null);
 
   const showToast = (msg) => {
@@ -29,57 +40,135 @@ export default function App() {
     }, 3500);
   };
 
+  // Sync state when Admin panel updates tokens
+  const refreshAppStateFromStore = () => {
+    if (user) {
+      const allUsers = getRegisteredUsers();
+      const match = allUsers.find(u => u.email?.toLowerCase() === user.email?.toLowerCase());
+      if (match) {
+        setTokens(match.tokens);
+      }
+    }
+  };
+
+  // Google Login & Registration:
+  // Rule: If people register now, they become a supporter, no other functions given (0 tokens)
+  const handleLoginSuccess = (userProfile) => {
+    // Register or retrieve user from Admin store
+    const registered = registerOrUpdateGoogleUser(userProfile);
+    const updatedUser = registered ? { ...userProfile, role: registered.role, tokens: registered.tokens } : { ...userProfile, role: 'supporter', tokens: 0 };
+    setUser(updatedUser);
+    setStoredUser(updatedUser);
+
+    if (registered) {
+      setTokens(registered.tokens);
+      if (registered.role === 'superadmin') {
+        showToast(`🔥 Welcome SuperAdmin (${registered.email})! Firebase Master Credential Authority active.`);
+      } else if (registered.role === 'admin') {
+        showToast(`👑 Welcome Administrator ${registered.givenName || registered.name}!`);
+      } else if (registered.role === 'trainer') {
+        showToast(`🏋️ Welcome Trainer ${registered.givenName || registered.name}! Coaching console active.`);
+      } else if (registered.role === 'doctor') {
+        showToast(`🩺 Welcome Doctor ${registered.givenName || registered.name}! Medical & Rehab console active.`);
+      } else if (registered.role === 'accountant') {
+        showToast(`💼 Welcome Accountant ${registered.givenName || registered.name}! Financial audit console active.`);
+      } else {
+        showToast(`Welcome ${registered.givenName || registered.name}! Registered as Supporter.`);
+      }
+    } else {
+      setTokens(0);
+      showToast(`Welcome, ${userProfile.name}! Registered as Supporter.`);
+    }
+
+    // After log in, it goes directly to the admin page, not a popup
+    setIsAuthOpen(false);
+    setCurrentView('admin');
+    setAdminTab(registered?.role === 'superadmin' ? 'users' : 'tokens');
+  };
+
+  const handleLogout = () => {
+    setUser(null);
+    clearStoredUser();
+    setTokens(0);
+    setCurrentView('public');
+    showToast("Signed out. Register or sign in with Google to access your tokens.");
+  };
+
+  // Book coach directly on the front page when logged in
   const handleOpenConsultation = (serviceName) => {
     if (serviceName) setSelectedService(serviceName);
-    setIsConsultationOpen(true);
+    if (user) {
+      setIsConsultationOpen(true);
+    } else {
+      showToast("Please sign in with Google first to book a consultation with Coach David.");
+      setIsAuthOpen(true);
+    }
+  };
+
+  // All token funds are on the admin page
+  const handleOpenTokenStore = () => {
+    if (user) {
+      setAdminTab('tokens');
+      setCurrentView('admin');
+    } else {
+      showToast("Sign in with Google to view and recharge your FitToken funds.");
+      setIsAuthOpen(true);
+    }
+  };
+
+  const handleOpenAdmin = (tab = 'tokens') => {
+    if (!user) {
+      showToast("Admin support is available once logged in through Google.");
+      setIsAuthOpen(true);
+      return;
+    }
+    setAdminTab(tab);
+    setCurrentView('admin');
   };
 
   const handleAddTokens = (amount) => {
     setTokens(prev => prev + amount);
+    // Log to Admin store purchases (1 token = USD $1)
+    addAdminPurchase({
+      clientName: user?.name || 'Registered User',
+      clientEmail: user?.email || 'guest@gmail.com',
+      itemName: `Token Recharge (+${amount} Tokens)`,
+      category: 'Token Recharge',
+      tokensOrCost: `$${amount} USD (+${amount} Tokens)`
+    });
     showToast(`Added ${amount} FitTokens to your balance!`);
   };
 
   // Video watching logic:
-  // - If subscriber: all videos are free
-  // - If already unlocked: free to watch
-  // - Otherwise: costs 1 token
-  // - No free preview
+  // Strict requirement: If people have no tokens or not signed in, they cannot view videos.
+  // They must have tokens in order to watch the videos (1 token per video).
   const handleWatchVideo = (video) => {
-    if (isSubscriber) {
-      setActiveVideo(video);
+    // 1. Must be signed in
+    if (!user) {
+      showToast("Sign in with Google required. You must have tokens in order to watch videos.");
+      setIsAuthOpen(true);
       return;
     }
 
+    // 2. If already unlocked during this session
     if (unlockedVideoIds.includes(video.id)) {
       setActiveVideo(video);
       return;
     }
 
-    // Needs 1 token
-    if (tokens >= 1) {
-      setTokens(prev => prev - 1);
-      setUnlockedVideoIds(prev => [...prev, video.id]);
-      setActiveVideo(video);
-      showToast(`1 Token used. "${video.title}" unlocked!`);
-    } else {
-      // 0 tokens and no free preview
-      showToast("You need 1 token to watch this video. Please recharge tokens or get the All-Access Pass.");
-      setIsTokenStoreOpen(true);
+    // 3. Must have at least 1 token
+    if (tokens < 1) {
+      showToast("You have 0 tokens. You must have tokens in order to watch videos. Please recharge on the Admin page.");
+      setAdminTab('tokens');
+      setCurrentView('admin');
+      return;
     }
-  };
 
-  // Monthly All-Access Pass: 99 tokens per month
-  const handleSubscribe = () => {
-    if (tokens >= 99) {
-      setTokens(prev => prev - 99);
-      setIsSubscriber(true);
-      showToast("Monthly All-Access Pass activated! All 31+ videos are now 100% free.");
-      return true;
-    } else {
-      showToast(`You have ${tokens} tokens. 99 tokens needed for Monthly All-Access.`);
-      setIsTokenStoreOpen(true);
-      return false;
-    }
+    // Deduct 1 token and unlock
+    setTokens(prev => prev - 1);
+    setUnlockedVideoIds(prev => [...prev, video.id]);
+    setActiveVideo(video);
+    showToast(`1 Token deducted. "${video.title}" unlocked! Remaining: ${tokens - 1} Tokens.`);
   };
 
   const scrollToWorkouts = () => {
@@ -87,50 +176,50 @@ export default function App() {
     if (el) el.scrollIntoView({ behavior: 'smooth' });
   };
 
+  // Render Full-Page Admin View (Not a popup)
+  if (currentView === 'admin' && user) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+        <AdminPage 
+          user={user}
+          tokens={tokens}
+          onAddTokens={handleAddTokens}
+          onLogout={handleLogout}
+          onBackToPublic={() => setCurrentView('public')}
+          initialTab={adminTab}
+          onRefreshAppState={refreshAppStateFromStore}
+        />
+
+        {/* Video Modal if active */}
+        {activeVideo && (
+          <VideoModal 
+            video={activeVideo}
+            isUnlocked={unlockedVideoIds.includes(activeVideo.id)}
+            user={user}
+            tokens={tokens}
+            onClose={() => setActiveVideo(null)}
+            onOpenConsultation={handleOpenConsultation}
+            onOpenAuth={() => setIsAuthOpen(true)}
+            onGoToAdminTokens={() => {
+              setActiveVideo(null);
+              setAdminTab('tokens');
+            }}
+          />
+        )}
+
+        {/* Google Authentication Modal */}
+        <AuthModal 
+          isOpen={isAuthOpen}
+          onClose={() => setIsAuthOpen(false)}
+          onLoginSuccess={handleLoginSuccess}
+        />
+      </div>
+    );
+  }
+
+  // Public View
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
-      
-      {/* Top Launch Announcement Bar */}
-      {showLaunchBanner && (
-        <div style={{
-          background: 'linear-gradient(90deg, #ff6b00 0%, #ff8a00 50%, #ea580c 100%)',
-          color: '#fff',
-          padding: '0.55rem 1rem',
-          fontSize: '0.85rem',
-          fontWeight: 700,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          position: 'relative',
-          zIndex: 60,
-          boxShadow: '0 2px 10px rgba(0, 0, 0, 0.2)'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', textAlign: 'center', paddingRight: '2rem' }}>
-            <Coins size={16} />
-            <span>
-              <strong>NEW:</strong> Watch any workout video for <strong>1 token</strong>, or subscribe to the <strong>Monthly All-Access Pass (99 tokens/mo)</strong> for unlimited free streaming!
-            </span>
-          </div>
-          <button
-            onClick={() => setShowLaunchBanner(false)}
-            style={{
-              position: 'absolute',
-              right: '12px',
-              top: '50%',
-              transform: 'translateY(-50%)',
-              background: 'none',
-              border: 'none',
-              color: '#fff',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center'
-            }}
-            aria-label="Dismiss banner"
-          >
-            <X size={16} />
-          </button>
-        </div>
-      )}
 
       {/* Floating Notification Toast */}
       {toastMessage && (
@@ -138,7 +227,7 @@ export default function App() {
           position: 'fixed',
           bottom: '24px',
           right: '24px',
-          zIndex: 1100,
+          zIndex: 1300,
           background: 'rgba(15, 20, 30, 0.95)',
           border: '1px solid var(--accent-orange)',
           boxShadow: '0 10px 30px rgba(0, 0, 0, 0.7)',
@@ -159,11 +248,14 @@ export default function App() {
         </div>
       )}
 
-      {/* Navigation */}
+      {/* Navigation with Google Authentication & Admin Portal Link */}
       <Navbar 
+        user={user}
+        onOpenAuth={() => setIsAuthOpen(true)}
+        onLogout={handleLogout}
+        onOpenAdmin={() => handleOpenAdmin('tokens')}
         tokens={tokens}
-        isSubscriber={isSubscriber}
-        onOpenTokenStore={() => setIsTokenStoreOpen(true)}
+        onOpenTokenStore={handleOpenTokenStore}
         onOpenConsultation={() => handleOpenConsultation('1-on-1 Online Personal Training')}
       />
 
@@ -171,15 +263,15 @@ export default function App() {
       <main style={{ flex: 1 }}>
         <Hero 
           onExploreWorkouts={scrollToWorkouts}
-          onOpenTokenStore={() => setIsTokenStoreOpen(true)}
+          onOpenTokenStore={handleOpenTokenStore}
           onOpenConsultation={() => handleOpenConsultation('1-on-1 Online Personal Training')}
         />
 
         <VideoGrid 
           onSelectVideo={handleWatchVideo}
           tokens={tokens}
-          isSubscriber={isSubscriber}
           unlockedVideoIds={unlockedVideoIds}
+          user={user}
         />
 
         <ServicesSection 
@@ -189,48 +281,52 @@ export default function App() {
         <TrainerProfile 
           onOpenConsultation={handleOpenConsultation}
         />
-
-        <MembershipSection 
-          isSubscriber={isSubscriber}
-          tokens={tokens}
-          onSubscribe={handleSubscribe}
-          onOpenTokenStore={() => setIsTokenStoreOpen(true)}
-          onExploreWorkouts={scrollToWorkouts}
-        />
       </main>
 
       {/* Footer */}
       <Footer 
-        onOpenTokenStore={() => setIsTokenStoreOpen(true)}
+        user={user}
+        onOpenTokenStore={handleOpenTokenStore}
         onOpenConsultation={handleOpenConsultation}
+        onOpenAdmin={() => handleOpenAdmin('tokens')}
+        onOpenAuth={() => {
+          showToast("Admin support is available once logged in through Google.");
+          setIsAuthOpen(true);
+        }}
       />
 
       {/* Modals */}
       {activeVideo && (
         <VideoModal 
           video={activeVideo}
-          isSubscriber={isSubscriber}
+          isUnlocked={unlockedVideoIds.includes(activeVideo.id)}
+          user={user}
+          tokens={tokens}
           onClose={() => setActiveVideo(null)}
           onOpenConsultation={handleOpenConsultation}
+          onOpenAuth={() => setIsAuthOpen(true)}
+          onGoToAdminTokens={() => {
+            setActiveVideo(null);
+            setAdminTab('tokens');
+            setCurrentView('admin');
+          }}
         />
       )}
 
-      {isTokenStoreOpen && (
-        <TokenStoreModal 
-          isOpen={isTokenStoreOpen}
-          onClose={() => setIsTokenStoreOpen(false)}
-          currentTokens={tokens}
-          onAddTokens={handleAddTokens}
-        />
-      )}
+      {/* Google Authentication Modal */}
+      <AuthModal 
+        isOpen={isAuthOpen}
+        onClose={() => setIsAuthOpen(false)}
+        onLoginSuccess={handleLoginSuccess}
+      />
 
-      {isConsultationOpen && (
-        <ConsultationModal 
-          isOpen={isConsultationOpen}
-          onClose={() => setIsConsultationOpen(false)}
-          preselectedService={selectedService}
-        />
-      )}
+      {/* Front-Page Consultation Booking Modal */}
+      <ConsultationModal 
+        isOpen={isConsultationOpen}
+        onClose={() => setIsConsultationOpen(false)}
+        preselectedService={selectedService}
+        user={user}
+      />
 
     </div>
   );
