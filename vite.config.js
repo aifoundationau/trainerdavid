@@ -6,7 +6,7 @@ function stripeDevServerPlugin(stripeSecretKey) {
     configureServer(server) {
       server.middlewares.use(async (req, res, next) => {
         const url = new URL(req.url, 'http://localhost:3000');
-        
+
         // POST /api/create-checkout-session
         if (req.method === 'POST' && url.pathname === '/api/create-checkout-session') {
           let bodyStr = '';
@@ -15,7 +15,7 @@ function stripeDevServerPlugin(stripeSecretKey) {
             try {
               const body = JSON.parse(bodyStr || '{}');
               const { packageId, tokens, customAmount, customerEmail, clientName } = body;
-              
+
               const origin = req.headers.origin || 'http://localhost:3000';
               let unitAmount = 10000;
               let itemName = 'FitToken Recharge - 100 Tokens';
@@ -52,7 +52,7 @@ function stripeDevServerPlugin(stripeSecretKey) {
               params.append('cancel_url', `${origin}/?stripe_cancel=true`);
               if (customerEmail) params.append('customer_email', customerEmail);
               params.append('client_reference_id', customerEmail || clientName || 'client');
-              
+
               params.append('metadata[package_id]', packageId || 'custom');
               params.append('metadata[tokens]', String(tokenCount));
               if (clientName) params.append('metadata[client_name]', clientName);
@@ -132,7 +132,7 @@ function stripeDevServerPlugin(stripeSecretKey) {
               const body = JSON.parse(bodyStr || '{}');
               const key = process.env.GEMINI_API_KEY || '';
               const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${key}`;
-              
+
               const geminiResp = await fetch(geminiUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
