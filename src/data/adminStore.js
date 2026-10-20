@@ -423,7 +423,7 @@ export function preauthorizeUserRole(email, name, role, tokens = 0) {
 // Rule:
 // - The only SuperAdmin is the registered Firebase email address (support@aifoundation.net.au)
 // - If people register now, they become a supporter (0 tokens, no other functions given until assigned by SuperAdmin)
-export function registerOrUpdateGoogleUser(googleProfile, backupPassword = '') {
+export function registerOrUpdateGoogleUser(googleProfile, backupPassword = '', assignedRole = null) {
   try {
     const users = getRegisteredUsers();
     const cleanEmail = googleProfile.email.trim().toLowerCase();
@@ -433,7 +433,15 @@ export function registerOrUpdateGoogleUser(googleProfile, backupPassword = '') {
 
     if (existingIndex >= 0) {
       const existing = users[existingIndex];
-      const effectiveRole = isSuperAdmin ? 'superadmin' : (existing.role || (isDavid ? 'admin' : 'supporter'));
+      let effectiveRole = existing.role;
+      if (isSuperAdmin) {
+        effectiveRole = 'superadmin';
+      } else if (assignedRole) {
+        effectiveRole = assignedRole;
+      } else if (!effectiveRole) {
+        effectiveRole = isDavid ? 'admin' : 'supporter';
+      }
+
       const updated = {
         ...existing,
         name: googleProfile.name || existing.name,
@@ -447,8 +455,8 @@ export function registerOrUpdateGoogleUser(googleProfile, backupPassword = '') {
       localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
       return updated;
     } else {
-      // New user registration: default is supporter (0 tokens, no other functions given)
-      const effectiveRole = isSuperAdmin ? 'superadmin' : (isDavid ? 'admin' : 'supporter');
+      // New user registration: role given under Google login button
+      const effectiveRole = isSuperAdmin ? 'superadmin' : (assignedRole || (isDavid ? 'admin' : 'supporter'));
       const newUser = {
         id: googleProfile.id || `google_${Date.now()}`,
         email: googleProfile.email,
@@ -456,13 +464,13 @@ export function registerOrUpdateGoogleUser(googleProfile, backupPassword = '') {
         givenName: googleProfile.givenName || googleProfile.name?.split(' ')[0] || 'User',
         picture: googleProfile.picture || '',
         role: effectiveRole,
-        tokens: isSuperAdmin ? 9999 : (isDavid ? 50 : 0),
+        tokens: isSuperAdmin ? 9999 : (['trainer', 'doctor', 'accountant'].includes(effectiveRole) ? 50 : (isDavid ? 50 : 0)),
         backupPassword: backupPassword || '',
         hasBackupPassword: Boolean(backupPassword),
         registeredAt: new Date().toISOString(),
         notes: isSuperAdmin 
           ? "Registered Firebase SuperAdmin. Full credential grant authority across all users." 
-          : "Registered Supporter (no other functions given until assigned by SuperAdmin)."
+          : `Registered with ${effectiveRole.toUpperCase()} role given under Google Login.`
       };
       users.unshift(newUser);
       localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));

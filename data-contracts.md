@@ -3,14 +3,14 @@
 ## 1. Scope & Purpose
 This document establishes the single source of truth and immutable data contract for **Trainer David** (Online Personal Training, Nutrition, Physiotherapy, and Sports Coaching platform). It governs all data ingestion channels across UI forms, REST endpoints, and AI agent extraction interfaces.
 
-*Note: Stripe payment processing is deferred per project requirements. The application operates in Free Launch Preview mode with FitToken allocation for booking consultations.*
+*Note: Stripe payment processing is active in test/sandbox mode (Account: `acct_1UKnKUI8bClhBF4P`). FitToken recharges ($100, $300, $600 USD) and Monthly All-Access Pass subscriptions ($99 USD/mo) are tokenized through Stripe-hosted Checkout and Payment Links under PCI DSS v4.0.*
 
 ---
 
 ## 2. Regulatory & Privacy Governance Framework
 - **Australian Privacy Principles (Privacy Act 1988 Cth)**: Strict adherence to APP 1 (open and transparent management of personal information), APP 3 (collection of solicited personal information), APP 6 (use or disclosure of personal information), and APP 11 (security of personal information).
 - **Sensitive Health Data (APP 6 & Privacy Act s 6(1))**: Injury histories, rehabilitation notes, and physical limitations are classified as **Sensitive/Health Data** requiring explicit user opt-in and restricted access.
-- **Financial Processing**: Card processing is currently omitted. When integrated in a future milestone, tokenized gateways will be audited under PCI DSS v4.0.
+- **Financial Processing**: Card processing is tokenized through Stripe-hosted 256-bit encrypted Checkout and audited under PCI DSS v4.0. No raw PAN or CVV touches internal application servers.
 
 ---
 
@@ -59,11 +59,14 @@ This document establishes the single source of truth and immutable data contract
 
 ---
 
-## 4. AI Agent Slot Extraction & Enforcement Protocol
+## 4. AI Agent & Gemini Flash RAG Inference Protocol
+*Powered by Google Gemini Flash (`gemini-flash-latest`), Project: `projects/614773274800` (`Gemini RAG API Key`), authenticated via the `key=API_KEY` query parameter.*
+
 When conversational AI or chat tools interact with clients:
-1. **Strict Type Coercion**: Any extraction slot (e.g., telephone number, service requested) that fails validation must trigger a graceful reprompt.
-2. **Forbidden Hallucinations**: The AI must not invent services, token costs, or pricing discounts outside of `services.js` and `data-contracts.md`.
-3. **Medical Disclaimer Gate**: If a user indicates severe acute injury (e.g. sharp radiating lumbar pain, acute joint dislocation), the agent must immediately output a safety warning urging direct in-person medical evaluation before proceeding with exercise prescriptions.
+1. **RAG Grounding**: The model grounds answers directly against `videoLibrary` (31+ video tutorials with anatomical targets and biomechanical cues) and `servicesData`. Video references use the structured format `[VIDEO:id:title]` to instantiate interactive, playable tutorial cards in the UI.
+2. **Strict Type Coercion**: Any extraction slot (e.g., telephone number, service requested) that fails validation must trigger a graceful reprompt.
+3. **Forbidden Hallucinations**: The AI must not invent services, token costs, or pricing discounts outside of `services.js` and `data-contracts.md`.
+4. **Medical Disclaimer Gate**: If a user indicates severe acute injury (e.g. sharp radiating lumbar pain, acute joint dislocation), the agent must immediately output a safety warning urging direct in-person medical evaluation before proceeding with exercise prescriptions.
 
 ---
 

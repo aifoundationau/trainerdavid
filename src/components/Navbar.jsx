@@ -9,7 +9,8 @@ export default function Navbar({
   onOpenAdmin,
   tokens, 
   onOpenTokenStore, 
-  onOpenConsultation 
+  onOpenConsultation,
+  onOpenAiChat 
 }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
@@ -73,17 +74,35 @@ export default function Navbar({
         <nav style={{
           display: 'flex',
           alignItems: 'center',
-          gap: '1.6rem'
+          gap: '1.4rem'
         }} className="desktop-nav">
           <a href="#workouts" style={{ fontSize: '0.92rem', fontWeight: 600, color: 'var(--text-secondary)', transition: 'color 0.2s', whiteSpace: 'nowrap' }}>
             Workouts
           </a>
+
           <a href="#services" style={{ fontSize: '0.92rem', fontWeight: 600, color: 'var(--text-secondary)', transition: 'color 0.2s', whiteSpace: 'nowrap' }}>
             Services
           </a>
-          <a href="#about" style={{ fontSize: '0.92rem', fontWeight: 600, color: 'var(--text-secondary)', transition: 'color 0.2s', whiteSpace: 'nowrap' }}>
-            About
-          </a>
+          <button 
+            onClick={onOpenAiChat}
+            style={{
+              background: 'linear-gradient(135deg, rgba(255, 107, 0, 0.15) 0%, rgba(255, 138, 0, 0.1) 100%)',
+              border: '1px solid rgba(255, 107, 0, 0.35)',
+              borderRadius: 'var(--radius-full)',
+              padding: '0.35rem 0.85rem',
+              color: '#ff9e40',
+              fontSize: '0.82rem',
+              fontWeight: 700,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              cursor: 'pointer',
+              transition: 'all 0.2s ease'
+            }}
+          >
+            <Sparkles size={14} color="#ff9e40" />
+            <span>Ask AI Coach</span>
+          </button>
         </nav>
 
         {/* Action Buttons & Auth / Token Tracker */}
@@ -149,21 +168,23 @@ export default function Navbar({
                     {user.name ? user.name.charAt(0).toUpperCase() : 'U'}
                   </div>
                 )}
-                <span style={{ fontSize: '0.82rem', fontWeight: 600, maxWidth: '80px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {user.givenName || user.name?.split(' ')[0] || 'User'}
-                </span>
-                <span 
-                  className={
-                    isSuperAdmin ? "badge badge-red" :
-                    userRole === 'doctor' ? "badge badge-cyan" :
-                    userRole === 'accountant' ? "badge badge-purple" :
-                    (userRole === 'admin' || userRole === 'trainer') ? "badge badge-orange" :
-                    "badge badge-lime"
-                  } 
-                  style={{ fontSize: '0.62rem', padding: '1px 6px', fontWeight: 800 }}
-                >
-                  {isSuperAdmin ? 'SuperAdmin' : (userRole.charAt(0).toUpperCase() + userRole.slice(1))}
-                </span>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', textAlign: 'left', lineHeight: 1.15 }}>
+                  <span style={{ fontSize: '0.82rem', fontWeight: 700, maxWidth: '100px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {user.givenName || user.name?.split(' ')[0] || 'User'}
+                  </span>
+                  <span style={{ 
+                    fontSize: '0.64rem', 
+                    fontWeight: 700, 
+                    color: isSuperAdmin ? '#ff6b6b' : 
+                           userRole === 'doctor' ? '#38bdf8' : 
+                           userRole === 'accountant' ? '#c084fc' : 
+                           (userRole === 'admin' || userRole === 'trainer') ? '#ff9e40' : 
+                           'var(--accent-lime)',
+                    textTransform: 'capitalize' 
+                  }}>
+                    {isSuperAdmin ? 'SuperAdmin' : userRole}
+                  </span>
+                </div>
               </button>
 
               {/* User Dropdown Menu */}
@@ -290,42 +311,7 @@ export default function Navbar({
             </button>
           )}
 
-          {/* Dedicated SuperAdmin Button for Firebase SuperAdmin */}
-          {isSuperAdmin && (
-            <button
-              onClick={() => onOpenAdmin('users')}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.35rem',
-                background: 'linear-gradient(135deg, #ef4444 0%, #b91c1c 100%)',
-                color: '#fff',
-                border: '1px solid rgba(255, 255, 255, 0.2)',
-                padding: '0.45rem 0.85rem',
-                borderRadius: '8px',
-                fontSize: '0.82rem',
-                fontWeight: 800,
-                cursor: 'pointer',
-                boxShadow: '0 4px 14px rgba(239, 68, 68, 0.4)',
-                whiteSpace: 'nowrap'
-              }}
-              id="navbar-superadmin-btn"
-              title="Open Firebase SuperAdmin Master Console"
-            >
-              🔥 <span>SuperAdmin</span>
-            </button>
-          )}
 
-          {/* Book Consultation */}
-          <button 
-            onClick={onOpenConsultation}
-            className="btn-primary"
-            style={{ padding: '0.48rem 0.95rem', fontSize: '0.82rem', whiteSpace: 'nowrap' }}
-            id="navbar-book-btn"
-          >
-            <Sparkles size={14} />
-            <span>Book Coach</span>
-          </button>
 
           {/* Mobile hamburger */}
           <button 
@@ -383,12 +369,31 @@ export default function Navbar({
           <a href="#workouts" onClick={() => setMobileMenuOpen(false)} style={{ fontSize: '1rem', fontWeight: 600 }}>
             Workouts
           </a>
+
           <a href="#services" onClick={() => setMobileMenuOpen(false)} style={{ fontSize: '1rem', fontWeight: 600 }}>
             Services
           </a>
-          <a href="#about" onClick={() => setMobileMenuOpen(false)} style={{ fontSize: '1rem', fontWeight: 600 }}>
-            About
-          </a>
+
+          <button
+            onClick={() => { onOpenAiChat(); setMobileMenuOpen(false); }}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '0.5rem',
+              padding: '0.75rem',
+              borderRadius: '10px',
+              background: 'linear-gradient(135deg, rgba(255, 107, 0, 0.2) 0%, rgba(255, 138, 0, 0.15) 100%)',
+              border: '1px solid rgba(255, 107, 0, 0.4)',
+              color: '#ff9e40',
+              fontWeight: 800,
+              fontSize: '0.92rem',
+              cursor: 'pointer'
+            }}
+          >
+            <Sparkles size={16} color="#ff9e40" />
+            <span>Ask Coach David AI (Gemini RAG)</span>
+          </button>
 
           {/* Portal link in mobile drawer - available once logged in */}
           {user && (
@@ -413,16 +418,13 @@ export default function Navbar({
             </button>
           )}
 
-          <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem' }}>
-            {user && (
-              <button onClick={() => { onOpenTokenStore(); setMobileMenuOpen(false); }} className="btn-token" style={{ flex: 1, justifyContent: 'center' }}>
+          {user && (
+            <div style={{ marginTop: '0.5rem' }}>
+              <button onClick={() => { onOpenTokenStore(); setMobileMenuOpen(false); }} className="btn-token" style={{ width: '100%', justifyContent: 'center' }}>
                 <Coins size={16} /> Recharge ({tokens})
               </button>
-            )}
-            <button onClick={() => { onOpenConsultation(); setMobileMenuOpen(false); }} className="btn-primary" style={{ flex: 1, justifyContent: 'center' }}>
-              Book Coach
-            </button>
-          </div>
+            </div>
+          )}
         </div>
       )}
 

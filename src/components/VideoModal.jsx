@@ -4,6 +4,7 @@ import { X, Play, CheckCircle2, ShieldCheck, Dumbbell, Sparkles, Check, Lock, Co
 export default function VideoModal({ 
   video, 
   isUnlocked,
+  isSubscriber = false,
   user,
   tokens,
   onClose, 
@@ -21,7 +22,7 @@ export default function VideoModal({
 
   if (!video) return null;
 
-  const canPlay = isUnlocked;
+  const canPlay = isUnlocked || isSubscriber;
 
   return (
     <div className="modal-backdrop" onClick={onClose}>

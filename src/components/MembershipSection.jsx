@@ -1,25 +1,46 @@
 import React, { useState } from 'react';
-import { ShieldCheck, Check, Sparkles, Lock, Coins, Crown, CheckCircle2 } from './Icons';
+import { ShieldCheck, Check, Sparkles, Lock, Coins, Crown, CheckCircle2, CreditCard, StripeIcon } from './Icons';
 import { membershipTiers } from '../data/services';
+import { startStripeCheckout } from '../utils/stripeCheckout';
 
-export default function MembershipSection({ isSubscriber, tokens, onSubscribe, onOpenTokenStore, onExploreWorkouts }) {
+export default function MembershipSection({ 
+  user, 
+  isSubscriber, 
+  tokens, 
+  onSubscribeWithTokens, 
+  onOpenTokenStore, 
+  onExploreWorkouts 
+}) {
   const tier = membershipTiers[0];
+  const [isRedirecting, setIsRedirecting] = useState(false);
   const [subscribeSuccess, setSubscribeSuccess] = useState(false);
 
-  const handleSubscribeClick = () => {
+  const handleStripeSubscribe = async () => {
+    setIsRedirecting(true);
+    try {
+      await startStripeCheckout({ packageId: 'monthly-pass', user });
+    } catch (err) {
+      alert(err.message || "Failed to launch Stripe Checkout.");
+      setIsRedirecting(false);
+    }
+  };
+
+  const handleTokenSubscribe = () => {
     if (isSubscriber) {
       onExploreWorkouts();
       return;
     }
     if (tokens < 99) {
-      onOpenTokenStore();
+      if (onOpenTokenStore) onOpenTokenStore();
       return;
     }
 
-    const success = onSubscribe();
-    if (success) {
-      setSubscribeSuccess(true);
-      setTimeout(() => setSubscribeSuccess(false), 3000);
+    if (onSubscribeWithTokens) {
+      const success = onSubscribeWithTokens();
+      if (success) {
+        setSubscribeSuccess(true);
+        setTimeout(() => setSubscribeSuccess(false), 3000);
+      }
     }
   };
 
@@ -47,7 +68,7 @@ export default function MembershipSection({ isSubscriber, tokens, onSubscribe, o
             MONTHLY ALL-ACCESS PASS
           </h2>
           <p style={{ fontSize: '1rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-            Individual videos cost 1 token each. Subscribe to the Monthly All-Access Pass for 99 tokens per month and stream every single tutorial completely free with zero deductions.
+            Individual videos cost 1 token each. Subscribe to the Monthly All-Access Pass for $99 USD/month (or 99 FitTokens) and stream every single tutorial completely free with zero deductions.
           </p>
         </div>
 
@@ -78,7 +99,7 @@ export default function MembershipSection({ isSubscriber, tokens, onSubscribe, o
             boxShadow: '0 4px 15px rgba(0, 0, 0, 0.3)',
             whiteSpace: 'nowrap'
           }}>
-            {isSubscriber ? '⭐ Active Subscription' : '👑 99 Tokens Per Month'}
+            {isSubscriber ? '⭐ Active Subscription' : '👑 $99 USD / Month'}
           </div>
 
           <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', justifyContent: 'space-between', gap: '1rem', marginBottom: '1.25rem' }}>
@@ -92,11 +113,11 @@ export default function MembershipSection({ isSubscriber, tokens, onSubscribe, o
             </div>
 
             <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.4rem' }}>
-              <span style={{ fontSize: '2.4rem', fontWeight: 900, fontFamily: 'var(--font-heading)', color: '#f59e0b' }}>
-                99
+              <span style={{ fontSize: '2.4rem', fontWeight: 900, fontFamily: 'var(--font-heading)', color: '#00e599' }}>
+                $99
               </span>
               <span style={{ fontSize: '0.92rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
-                Tokens / mo
+                USD / mo
               </span>
             </div>
           </div>
@@ -114,7 +135,7 @@ export default function MembershipSection({ isSubscriber, tokens, onSubscribe, o
             borderTop: '1px solid var(--border-subtle)',
             paddingTop: '1.25rem'
           }}>
-            {tier.features.map((feat, idx) => (
+            {(tier.features || []).map((feat, idx) => (
               <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '0.7rem', fontSize: '0.9rem', color: '#fff' }}>
                 <div style={{
                   width: '20px',
@@ -156,7 +177,7 @@ export default function MembershipSection({ isSubscriber, tokens, onSubscribe, o
             </div>
           )}
 
-          {/* CTA Button */}
+          {/* CTA Buttons */}
           {isSubscriber ? (
             <button
               onClick={onExploreWorkouts}
@@ -174,19 +195,54 @@ export default function MembershipSection({ isSubscriber, tokens, onSubscribe, o
               <span>Subscribed: Watch Any Video Free</span>
             </button>
           ) : (
-            <button
-              onClick={handleSubscribeClick}
-              className="btn-primary"
-              style={{ width: '100%', padding: '0.95rem', fontSize: '1rem', marginBottom: '1.25rem' }}
-              id="subscribe-membership-btn"
-            >
-              <Coins size={18} />
-              <span>
-                {tokens >= 99 
-                  ? 'Subscribe with 99 Tokens' 
-                  : `Get Pass (99 Tokens/mo) - Need ${99 - tokens} more`}
-              </span>
-            </button>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '1.25rem' }}>
+              {/* Primary Stripe Button */}
+              <button
+                onClick={handleStripeSubscribe}
+                disabled={isRedirecting}
+                className="btn-primary"
+                style={{
+                  width: '100%',
+                  padding: '1rem',
+                  fontSize: '1.02rem',
+                  background: 'linear-gradient(135deg, #635bff 0%, #4338ca 100%)',
+                  boxShadow: '0 4px 20px rgba(99, 91, 255, 0.4)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '0.65rem'
+                }}
+              >
+                <StripeIcon size={22} />
+                <span>{isRedirecting ? "Connecting to Stripe..." : "Subscribe with Stripe ($99 USD / mo)"}</span>
+              </button>
+
+              {/* Alternative: Subscribe with tokens */}
+              <button
+                onClick={handleTokenSubscribe}
+                style={{
+                  width: '100%',
+                  padding: '0.75rem',
+                  fontSize: '0.88rem',
+                  background: 'rgba(255, 255, 255, 0.05)',
+                  border: '1px solid var(--border-subtle)',
+                  borderRadius: '12px',
+                  color: '#fff',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '0.5rem',
+                  cursor: 'pointer'
+                }}
+              >
+                <Coins size={16} color="#f59e0b" />
+                <span>
+                  {tokens >= 99 
+                    ? 'Or Activate with 99 Tokens' 
+                    : `Or Activate with 99 Tokens (Current: ${tokens})`}
+                </span>
+              </button>
+            </div>
           )}
 
           {/* Access Note */}
@@ -202,7 +258,7 @@ export default function MembershipSection({ isSubscriber, tokens, onSubscribe, o
           }}>
             <Lock size={15} color="var(--accent-lime)" style={{ flexShrink: 0 }} />
             <div>
-              <strong style={{ color: '#fff' }}>No Lock-In Contract:</strong> Pay with FitTokens. Active subscribers never pay token fees for any video in our catalog.
+              <strong style={{ color: '#fff' }}>Secure Checkout & No Lock-in:</strong> Processed through Stripe's 256-bit encrypted checkout. Card, Apple Pay & Google Pay supported. Cancel anytime with 1-click.
             </div>
           </div>
 

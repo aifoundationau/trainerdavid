@@ -397,3 +397,42 @@ export function Unlock({ size = 20, color = "currentColor", ...props }) {
   );
 }
 
+export function StripeIcon({ size = 20, ...props }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 32 32" fill="none" {...props}>
+      <rect width="32" height="32" rx="6" fill="#635BFF"/>
+      <path fill="#fff" d="M14.5 12.3c0-.8.7-1.1 1.8-1.1 1.6 0 3.5.5 5 1.4v-4.1c-1.6-.7-3.3-1-5-1-4.2 0-7 2.2-7 6 0 5.8 8 4.9 8 7.4 0 .9-.8 1.2-2 1.2-1.8 0-4.1-.7-5.9-1.7v4.2c1.9.8 3.8 1.2 5.9 1.2 4.3 0 7.3-2.1 7.3-6.1-.1-6.2-8.1-5.1-8.1-7.4z"/>
+    </svg>
+  );
+}
+
+export function Bot({ size = 20, color = "currentColor", ...props }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M12 8V4H8" />
+      <rect width="16" height="12" x="4" y="8" rx="2" />
+      <path d="M2 14h2" />
+      <path d="M20 14h2" />
+      <path d="M15 13v2" />
+      <path d="M9 13v2" />
+    </svg>
+  );
+}
+
+export function Send({ size = 20, color = "currentColor", ...props }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="m22 2-7 20-4-9-9-4Z" />
+      <path d="M22 2 11 13" />
+    </svg>
+  );
+}
+
+export function MessageSquare({ size = 20, color = "currentColor", ...props }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+    </svg>
+  );
+}
+

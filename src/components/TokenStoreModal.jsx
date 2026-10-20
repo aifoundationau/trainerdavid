@@ -1,21 +1,32 @@
 import React, { useState } from 'react';
-import { X, Coins, Sparkles, ShieldCheck, Check, CreditCard, Lock, ArrowRight } from './Icons';
+import { X, Coins, Sparkles, ShieldCheck, Check, CreditCard, Lock, ArrowRight, StripeIcon } from './Icons';
 import { tokenPackages } from '../data/services';
+import { startStripeCheckout } from '../utils/stripeCheckout';
 
-export default function TokenStoreModal({ isOpen, onClose, currentTokens, onAddTokens }) {
+export default function TokenStoreModal({ isOpen, onClose, currentTokens, onAddTokens, user }) {
   const [selectedPack, setSelectedPack] = useState(tokenPackages[1]);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isRedirectingStripe, setIsRedirectingStripe] = useState(false);
   const [purchaseSuccess, setPurchaseSuccess] = useState(false);
 
   if (!isOpen) return null;
 
-  const handleAddPackTokens = () => {
+  const handleStripePay = async () => {
+    setIsRedirectingStripe(true);
+    try {
+      await startStripeCheckout({ packageId: selectedPack.id, user });
+    } catch (err) {
+      alert(err.message || "Failed to start Stripe Checkout.");
+      setIsRedirectingStripe(false);
+    }
+  };
+
+  const handleInstantDemoActivation = () => {
     setIsProcessing(true);
     setTimeout(() => {
       setIsProcessing(false);
       setPurchaseSuccess(true);
-      const bonusTokens = selectedPack.id === 'pro' ? 15 : selectedPack.id === 'elite' ? 50 : 0;
-      onAddTokens(selectedPack.tokens + bonusTokens);
+      onAddTokens(selectedPack.tokens);
       setTimeout(() => {
         setPurchaseSuccess(false);
         onClose();
@@ -65,7 +76,8 @@ export default function TokenStoreModal({ isOpen, onClose, currentTokens, onAddT
               color: '#fff',
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'center'
+              justifyContent: 'center',
+              cursor: 'pointer'
             }}
           >
             <X size={18} />
@@ -83,7 +95,7 @@ export default function TokenStoreModal({ isOpen, onClose, currentTokens, onAddT
           color: 'var(--text-secondary)',
           lineHeight: 1.5
         }}>
-          FitTokens give you flexible on-demand workout access. Watch any video masterclass for <strong>1 token</strong>, or subscribe to the <strong>Monthly All-Access Pass for 99 tokens/month</strong> for unlimited free streaming of all 31+ workouts.
+          FitTokens give you flexible on-demand workout access. Watch any video masterclass for <strong>1 token</strong> (USD $1 valuation), or pay with Stripe for immediate automatic crediting to your account balance.
         </div>
 
         {/* Packages Grid */}
@@ -135,7 +147,7 @@ export default function TokenStoreModal({ isOpen, onClose, currentTokens, onAddT
 
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.35rem', margin: '0.5rem 0' }}>
                   <span style={{ fontSize: '1.75rem', fontWeight: 900, fontFamily: 'var(--font-heading)', color: '#fff' }}>
-                    ${pack.price}
+                    ${pack.priceUsd}
                   </span>
                   <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>USD</span>
                 </div>
@@ -152,17 +164,6 @@ export default function TokenStoreModal({ isOpen, onClose, currentTokens, onAddT
                   <Coins size={16} />
                   <span>{pack.tokens} Tokens</span>
                 </div>
-
-                {pack.bonus && (
-                  <div style={{
-                    fontSize: '0.75rem',
-                    color: 'var(--accent-lime)',
-                    fontWeight: 700,
-                    marginBottom: '0.5rem'
-                  }}>
-                    {pack.bonus}
-                  </div>
-                )}
 
                 <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: 1.4, flexGrow: 1 }}>
                   {pack.description}
@@ -186,11 +187,11 @@ export default function TokenStoreModal({ isOpen, onClose, currentTokens, onAddT
         }}>
           <Lock size={18} color="var(--accent-lime)" style={{ flexShrink: 0 }} />
           <div>
-            <strong style={{ color: '#fff' }}>Instant Token Activation:</strong> Select your package below to instantly add tokens to your balance, watch video tutorials (1 token each), or activate your 99 tokens/month All-Access Pass.
+            <strong style={{ color: '#fff' }}>Secure Stripe Sandbox Checkout:</strong> Supports Credit/Debit Cards, Google Pay, Apple Pay, and Stripe Link. Tokens are automatically credited immediately upon checkout return.
           </div>
         </div>
 
-        {/* Purchase Action Button */}
+        {/* Purchase Action Buttons */}
         {purchaseSuccess ? (
           <div style={{
             background: 'rgba(0, 229, 153, 0.15)',
@@ -206,24 +207,58 @@ export default function TokenStoreModal({ isOpen, onClose, currentTokens, onAddT
             gap: '0.5rem'
           }}>
             <Check size={20} />
-            <span>Success! Tokens added to your account balance.</span>
+            <span>Success! {selectedPack.tokens} Tokens added to your account balance.</span>
           </div>
         ) : (
-          <button
-            onClick={handleAddPackTokens}
-            disabled={isProcessing}
-            className="btn-primary"
-            style={{ width: '100%', padding: '0.95rem', fontSize: '1rem' }}
-          >
-            {isProcessing ? (
-              <span>Activating Tokens...</span>
-            ) : (
-              <>
-                <Coins size={18} />
-                <span>Get {selectedPack.tokens} Tokens (${selectedPack.price})</span>
-              </>
-            )}
-          </button>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            {/* Primary Stripe Button */}
+            <button
+              onClick={handleStripePay}
+              disabled={isRedirectingStripe || isProcessing}
+              className="btn-primary"
+              style={{
+                width: '100%',
+                padding: '0.95rem',
+                fontSize: '1rem',
+                background: 'linear-gradient(135deg, #635bff 0%, #4338ca 100%)',
+                boxShadow: '0 4px 20px rgba(99, 91, 255, 0.35)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '0.65rem'
+              }}
+            >
+              <StripeIcon size={20} />
+              <span>
+                {isRedirectingStripe 
+                  ? "Redirecting to Stripe..." 
+                  : `Pay $${selectedPack.priceUsd} with Stripe (${selectedPack.tokens} Tokens)`}
+              </span>
+            </button>
+
+            {/* Instant Demo Sandbox Credit */}
+            <button
+              onClick={handleInstantDemoActivation}
+              disabled={isProcessing || isRedirectingStripe}
+              style={{
+                width: '100%',
+                padding: '0.7rem',
+                fontSize: '0.85rem',
+                background: 'rgba(255, 255, 255, 0.05)',
+                border: '1px solid var(--border-subtle)',
+                borderRadius: '12px',
+                color: 'var(--text-secondary)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '0.45rem',
+                cursor: 'pointer'
+              }}
+            >
+              <Coins size={14} color="#f59e0b" />
+              <span>{isProcessing ? "Crediting Demo Funds..." : `Quick Sandbox Credit (Free Test Mode)`}</span>
+            </button>
+          </div>
         )}
 
       </div>

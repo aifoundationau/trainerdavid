@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import Navbar from './components/Navbar';
 import Hero from './components/Hero';
 import VideoGrid from './components/VideoGrid';
+
 import ServicesSection from './components/ServicesSection';
 import TrainerProfile from './components/TrainerProfile';
 import Footer from './components/Footer';
@@ -9,6 +10,7 @@ import VideoModal from './components/VideoModal';
 import AuthModal from './components/AuthModal';
 import ConsultationModal from './components/ConsultationModal';
 import AdminPage from './components/AdminPage';
+import CoachDavidAiModal from './components/CoachDavidAiModal';
 import { Flame, Sparkles, X, Coins, CheckCircle2 } from './components/Icons';
 import { getStoredUser, setStoredUser, clearStoredUser } from './utils/googleAuth';
 import { registerOrUpdateGoogleUser, addAdminPurchase, getRegisteredUsers } from './data/adminStore';
@@ -26,10 +28,14 @@ export default function App() {
     }
     return 0; // Supporters start with 0 tokens
   });
+  const [isSubscriber, setIsSubscriber] = useState(() => {
+    return localStorage.getItem('trainer_david_subscriber') === 'true';
+  });
   const [unlockedVideoIds, setUnlockedVideoIds] = useState([]); // Videos unlocked for 1 token
   const [activeVideo, setActiveVideo] = useState(null);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [isConsultationOpen, setIsConsultationOpen] = useState(false);
+  const [isAiChatOpen, setIsAiChatOpen] = useState(false);
   const [selectedService, setSelectedService] = useState('1-on-1 Online Personal Training');
   const [toastMessage, setToastMessage] = useState(null);
 
@@ -51,12 +57,56 @@ export default function App() {
     }
   };
 
+  // Process Stripe Checkout redirect callbacks (?session_id=...&stripe_success=true)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const stripeSuccess = params.get('stripe_success');
+    const sessionId = params.get('session_id');
+    const pkgId = params.get('package');
+    const urlTokens = parseInt(params.get('tokens'), 10);
+
+    if (stripeSuccess === 'true' || sessionId) {
+      if (pkgId === 'monthly-pass') {
+        setIsSubscriber(true);
+        localStorage.setItem('trainer_david_subscriber', 'true');
+        addAdminPurchase({
+          clientName: user?.name || 'Stripe Customer',
+          clientEmail: user?.email || 'customer@stripe.com',
+          itemName: 'Monthly All-Access Pass (Stripe Checkout)',
+          category: 'Membership Subscription',
+          tokensOrCost: '$99.00 USD/mo'
+        });
+        showToast('🎉 Stripe Subscription Confirmed! Monthly All-Access Pass is now active.');
+      } else {
+        const toAdd = !isNaN(urlTokens) && urlTokens > 0 
+          ? urlTokens 
+          : (pkgId === 'recharge-100' ? 100 : (pkgId === 'recharge-300' ? 300 : (pkgId === 'recharge-600' ? 600 : 100)));
+        
+        setTokens(prev => prev + toAdd);
+        addAdminPurchase({
+          clientName: user?.name || 'Stripe Customer',
+          clientEmail: user?.email || 'customer@stripe.com',
+          itemName: `FitToken Recharge (+${toAdd} Tokens via Stripe)`,
+          category: 'Stripe Payment',
+          tokensOrCost: `$${toAdd} USD (+${toAdd} Tokens)`
+        });
+        showToast(`💳 Stripe Checkout Confirmed! Recharged ${toAdd} FitTokens to your balance.`);
+      }
+
+      // Clean up URL parameters without refreshing
+      window.history.replaceState({}, document.title, window.location.pathname);
+    } else if (params.get('stripe_cancel') === 'true') {
+      showToast('Stripe checkout was cancelled. No charges were made.');
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, [user]);
+
   // Google Login & Registration:
   // Rule: If people register now, they become a supporter, no other functions given (0 tokens)
   const handleLoginSuccess = (userProfile) => {
-    // Register or retrieve user from Admin store
-    const registered = registerOrUpdateGoogleUser(userProfile);
-    const updatedUser = registered ? { ...userProfile, role: registered.role, tokens: registered.tokens } : { ...userProfile, role: 'supporter', tokens: 0 };
+    // Register or retrieve user from Admin store with given role
+    const registered = registerOrUpdateGoogleUser(userProfile, '', userProfile.role);
+    const updatedUser = registered ? { ...userProfile, role: registered.role, tokens: registered.tokens } : { ...userProfile, role: userProfile.role || 'supporter', tokens: 0 };
     setUser(updatedUser);
     setStoredUser(updatedUser);
 
@@ -80,7 +130,7 @@ export default function App() {
       showToast(`Welcome, ${userProfile.name}! Registered as Supporter.`);
     }
 
-    // After log in, it goes directly to the admin page, not a popup
+    // After log in, go directly to the admin page
     setIsAuthOpen(false);
     setCurrentView('admin');
     setAdminTab(registered?.role === 'superadmin' ? 'users' : 'tokens');
@@ -90,6 +140,8 @@ export default function App() {
     setUser(null);
     clearStoredUser();
     setTokens(0);
+    setIsSubscriber(false);
+    localStorage.removeItem('trainer_david_subscriber');
     setCurrentView('public');
     showToast("Signed out. Register or sign in with Google to access your tokens.");
   };
@@ -139,9 +191,30 @@ export default function App() {
     showToast(`Added ${amount} FitTokens to your balance!`);
   };
 
+  const handleSubscribeWithTokens = () => {
+    if (tokens < 99) {
+      showToast(`You have ${tokens} tokens. 99 tokens needed for Monthly All-Access Pass.`);
+      setAdminTab('tokens');
+      setCurrentView('admin');
+      return false;
+    }
+
+    setTokens(prev => prev - 99);
+    setIsSubscriber(true);
+    localStorage.setItem('trainer_david_subscriber', 'true');
+    addAdminPurchase({
+      clientName: user?.name || 'Registered Supporter',
+      clientEmail: user?.email || 'supporter@gmail.com',
+      itemName: 'Monthly All-Access Pass (Tokens)',
+      category: 'Membership Subscription',
+      tokensOrCost: '99 Tokens ($99 USD value)'
+    });
+    showToast('👑 Monthly All-Access Pass activated! All 31+ workouts free to stream.');
+    return true;
+  };
+
   // Video watching logic:
-  // Strict requirement: If people have no tokens or not signed in, they cannot view videos.
-  // They must have tokens in order to watch the videos (1 token per video).
+  // Active Subscribers watch freely. Otherwise 1 token required.
   const handleWatchVideo = (video) => {
     // 1. Must be signed in
     if (!user) {
@@ -150,15 +223,21 @@ export default function App() {
       return;
     }
 
-    // 2. If already unlocked during this session
+    // 2. Active Subscriber: unlimited free access
+    if (isSubscriber) {
+      setActiveVideo(video);
+      return;
+    }
+
+    // 3. If already unlocked during this session
     if (unlockedVideoIds.includes(video.id)) {
       setActiveVideo(video);
       return;
     }
 
-    // 3. Must have at least 1 token
+    // 4. Must have at least 1 token
     if (tokens < 1) {
-      showToast("You have 0 tokens. You must have tokens in order to watch videos. Please recharge on the Admin page.");
+      showToast("You have 0 tokens. Please recharge via Stripe on the Admin page or get an All-Access Pass.");
       setAdminTab('tokens');
       setCurrentView('admin');
       return;
@@ -195,6 +274,7 @@ export default function App() {
           <VideoModal 
             video={activeVideo}
             isUnlocked={unlockedVideoIds.includes(activeVideo.id)}
+            isSubscriber={isSubscriber}
             user={user}
             tokens={tokens}
             onClose={() => setActiveVideo(null)}
@@ -212,6 +292,15 @@ export default function App() {
           isOpen={isAuthOpen}
           onClose={() => setIsAuthOpen(false)}
           onLoginSuccess={handleLoginSuccess}
+        />
+
+        {/* Coach David AI Assistant Modal */}
+        <CoachDavidAiModal 
+          isOpen={isAiChatOpen}
+          onClose={() => setIsAiChatOpen(false)}
+          user={user}
+          onSelectVideo={handleWatchVideo}
+          onOpenConsultation={handleOpenConsultation}
         />
       </div>
     );
@@ -257,6 +346,7 @@ export default function App() {
         tokens={tokens}
         onOpenTokenStore={handleOpenTokenStore}
         onOpenConsultation={() => handleOpenConsultation('1-on-1 Online Personal Training')}
+        onOpenAiChat={() => setIsAiChatOpen(true)}
       />
 
       {/* Main Content */}
@@ -272,7 +362,10 @@ export default function App() {
           tokens={tokens}
           unlockedVideoIds={unlockedVideoIds}
           user={user}
+          isSubscriber={isSubscriber}
         />
+
+
 
         <ServicesSection 
           onBookService={(serviceTitle) => handleOpenConsultation(serviceTitle)}
@@ -300,6 +393,7 @@ export default function App() {
         <VideoModal 
           video={activeVideo}
           isUnlocked={unlockedVideoIds.includes(activeVideo.id)}
+          isSubscriber={isSubscriber}
           user={user}
           tokens={tokens}
           onClose={() => setActiveVideo(null)}
@@ -326,6 +420,17 @@ export default function App() {
         onClose={() => setIsConsultationOpen(false)}
         preselectedService={selectedService}
         user={user}
+      />
+
+
+
+      {/* Coach David AI Assistant Modal */}
+      <CoachDavidAiModal 
+        isOpen={isAiChatOpen}
+        onClose={() => setIsAiChatOpen(false)}
+        user={user}
+        onSelectVideo={handleWatchVideo}
+        onOpenConsultation={handleOpenConsultation}
       />
 
     </div>

@@ -4,7 +4,7 @@ import { videoLibrary, categories } from '../data/videos';
 
 const PAGE_SIZE = 9; // 3 videos across x 3 rows down = 9 videos max per panel
 
-export default function VideoGrid({ onSelectVideo, tokens, unlockedVideoIds = [], user }) {
+export default function VideoGrid({ onSelectVideo, tokens, unlockedVideoIds = [], user, isSubscriber = false }) {
   const [selectedCategory, setSelectedCategory] = useState("All Workouts");
   const [searchQuery, setSearchQuery] = useState("");
   const [difficultyFilter, setDifficultyFilter] = useState("All");
@@ -221,7 +221,7 @@ export default function VideoGrid({ onSelectVideo, tokens, unlockedVideoIds = []
               {currentVideos.map((video) => {
                 const isUnlocked = unlockedVideoIds.includes(video.id);
                 const hasTokens = tokens >= 1;
-                const canWatch = isUnlocked || (user && hasTokens);
+                const canWatch = isSubscriber || isUnlocked || (user && hasTokens);
 
                 return (
                   <div 
@@ -343,6 +343,11 @@ export default function VideoGrid({ onSelectVideo, tokens, unlockedVideoIds = []
                             <Lock size={13} color="var(--accent-orange)" />
                             <span>1 Token • Sign In</span>
                           </div>
+                        ) : isSubscriber ? (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', color: 'var(--accent-lime)', fontSize: '0.75rem', fontWeight: 700 }}>
+                            <Check size={14} color="var(--accent-lime)" strokeWidth={3} />
+                            <span>Pass Active</span>
+                          </div>
                         ) : isUnlocked ? (
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', color: 'var(--accent-lime)', fontSize: '0.75rem', fontWeight: 700 }}>
                             <Check size={14} />
@@ -371,7 +376,12 @@ export default function VideoGrid({ onSelectVideo, tokens, unlockedVideoIds = []
                             alignItems: 'center'
                           }}
                         >
-                          {!user ? (
+                          {isSubscriber ? (
+                            <>
+                              <span>Stream Free</span>
+                              <Play size={12} fill="#fff" />
+                            </>
+                          ) : !user ? (
                             <>
                               <Lock size={12} color="#ff9e40" />
                               <span>Sign In (1 Token)</span>

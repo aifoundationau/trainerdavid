@@ -24,7 +24,8 @@ import {
   Utensils,
   Zap,
   Activity,
-  ClipboardList
+  ClipboardList,
+  StripeIcon
 } from './Icons';
 import { 
   getRegisteredUsers, 
@@ -39,6 +40,7 @@ import {
   preauthorizeUserRole
 } from '../data/adminStore';
 import { tokenPackages } from '../data/services';
+import { startStripeCheckout } from '../utils/stripeCheckout';
 
 export default function AdminPage({ 
   user, 
@@ -81,6 +83,31 @@ export default function AdminPage({
 
   // FitToken Recharge State (amounts: 100, 300, 600, or custom, 1 token = USD $1)
   const [customAmount, setCustomAmount] = useState(100);
+  const [isRedirectingStripe, setIsRedirectingStripe] = useState(null);
+
+  const handleStripeRecharge = async (packId) => {
+    setIsRedirectingStripe(packId);
+    try {
+      await startStripeCheckout({ packageId: packId, user });
+    } catch (err) {
+      showToast(err.message || "Failed to start Stripe Checkout.");
+      setIsRedirectingStripe(null);
+    }
+  };
+
+  const handleStripeCustomRecharge = async (amt) => {
+    if (!amt || amt <= 0) {
+      showToast("Please enter a valid token amount.");
+      return;
+    }
+    setIsRedirectingStripe('custom');
+    try {
+      await startStripeCheckout({ customAmount: amt, user });
+    } catch (err) {
+      showToast(err.message || "Failed to start Stripe Checkout.");
+      setIsRedirectingStripe(null);
+    }
+  };
 
   // Handle Token Recharge Directly on Admin Page
   const handleRechargeTokens = (amountToRecharge) => {
@@ -603,26 +630,49 @@ export default function AdminPage({
                           </p>
                         </div>
 
-                        <button
-                          onClick={() => handleRechargeTokens(pack.tokens)}
-                          disabled={isProcessing}
-                          className={pack.popular ? 'btn-primary' : 'btn-secondary'}
-                          style={{
-                            width: '100%',
-                            justifyContent: 'center',
-                            padding: '0.75rem',
-                            fontSize: '0.9rem'
-                          }}
-                        >
-                          {isProcessing ? (
-                            <span>Crediting Funds...</span>
-                          ) : (
-                            <>
-                              <Plus size={16} />
-                              <span>Recharge {pack.tokens} Tokens (${pack.priceUsd} USD)</span>
-                            </>
-                          )}
-                        </button>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                          <button
+                            onClick={() => handleStripeRecharge(pack.id)}
+                            disabled={isRedirectingStripe === pack.id}
+                            className="btn-primary"
+                            style={{
+                              width: '100%',
+                              justifyContent: 'center',
+                              padding: '0.8rem',
+                              fontSize: '0.92rem',
+                              background: 'linear-gradient(135deg, #635bff 0%, #4338ca 100%)',
+                              boxShadow: '0 4px 15px rgba(99, 91, 255, 0.35)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '0.5rem'
+                            }}
+                          >
+                            <StripeIcon size={18} />
+                            <span>{isRedirectingStripe === pack.id ? "Connecting to Stripe..." : `Pay $${pack.priceUsd} with Stripe`}</span>
+                          </button>
+
+                          <button
+                            onClick={() => handleRechargeTokens(pack.tokens)}
+                            disabled={isProcessing}
+                            style={{
+                              width: '100%',
+                              padding: '0.5rem',
+                              fontSize: '0.78rem',
+                              background: 'rgba(255, 255, 255, 0.05)',
+                              border: '1px solid var(--border-subtle)',
+                              borderRadius: '8px',
+                              color: 'var(--text-secondary)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              gap: '0.35rem',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            <Coins size={13} color="#f59e0b" />
+                            <span>{isProcessing ? "Crediting..." : `Sandbox Free Credit (+${pack.tokens})`}</span>
+                          </button>
+                        </div>
                       </div>
                     );
                   })}
@@ -699,26 +749,49 @@ export default function AdminPage({
                       </p>
                     </div>
 
-                    <button
-                      onClick={() => handleRechargeTokens(customAmount)}
-                      disabled={processingPackId === `recharge-${customAmount}`}
-                      className="btn-primary"
-                      style={{
-                        width: '100%',
-                        justifyContent: 'center',
-                        padding: '0.75rem',
-                        fontSize: '0.9rem'
-                      }}
-                    >
-                      {processingPackId === `recharge-${customAmount}` ? (
-                        <span>Crediting Funds...</span>
-                      ) : (
-                        <>
-                          <Plus size={16} />
-                          <span>Recharge {customAmount} Tokens (${customAmount} USD)</span>
-                        </>
-                      )}
-                    </button>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                      <button
+                        onClick={() => handleStripeCustomRecharge(customAmount)}
+                        disabled={isRedirectingStripe === 'custom'}
+                        className="btn-primary"
+                        style={{
+                          width: '100%',
+                          justifyContent: 'center',
+                          padding: '0.8rem',
+                          fontSize: '0.92rem',
+                          background: 'linear-gradient(135deg, #635bff 0%, #4338ca 100%)',
+                          boxShadow: '0 4px 15px rgba(99, 91, 255, 0.35)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.5rem'
+                        }}
+                      >
+                        <StripeIcon size={18} />
+                        <span>{isRedirectingStripe === 'custom' ? "Connecting to Stripe..." : `Pay $${customAmount || 0} with Stripe`}</span>
+                      </button>
+
+                      <button
+                        onClick={() => handleRechargeTokens(customAmount)}
+                        disabled={processingPackId === `recharge-${customAmount}`}
+                        style={{
+                          width: '100%',
+                          padding: '0.5rem',
+                          fontSize: '0.78rem',
+                          background: 'rgba(255, 255, 255, 0.05)',
+                          border: '1px solid var(--border-subtle)',
+                          borderRadius: '8px',
+                          color: 'var(--text-secondary)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '0.35rem',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        <Coins size={13} color="#f59e0b" />
+                        <span>{processingPackId === `recharge-${customAmount}` ? "Crediting..." : `Sandbox Free Credit (+${customAmount || 0})`}</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>

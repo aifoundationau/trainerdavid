@@ -62,7 +62,7 @@ export const servicesData = [
   }
 ];
 
-// FitToken Recharge Bundles: 1 Token = USD $1
+// FitToken Recharge Bundles: 1 Token = USD $1 (Integrated with Stripe Checkout)
 export const tokenPackages = [
   {
     id: "recharge-100",
@@ -70,6 +70,8 @@ export const tokenPackages = [
     name: "100 Tokens",
     priceUsd: 100,
     popular: false,
+    stripePriceId: "price_1USPjZI8bClhBF4PaGSO8uth",
+    stripePaymentUrl: "https://buy.stripe.com/test_cNidR9cIIfZzgo01Jf1wY00",
     description: "Recharge 100 FitTokens at USD $1 per token. Stream 100 video masterclasses (1 token each)."
   },
   {
@@ -78,6 +80,8 @@ export const tokenPackages = [
     name: "300 Tokens",
     priceUsd: 300,
     popular: true,
+    stripePriceId: "price_1USPjfI8bClhBF4P55ZvxrR1",
+    stripePaymentUrl: "https://buy.stripe.com/test_dRmcN54cc5kV0p2bjP1wY01",
     description: "Recharge 300 FitTokens at USD $1 per token. Stream 300 video masterclasses (1 token each)."
   },
   {
@@ -86,7 +90,29 @@ export const tokenPackages = [
     name: "600 Tokens",
     priceUsd: 600,
     popular: false,
+    stripePriceId: "price_1USPjoI8bClhBF4PzNhI9iUi",
+    stripePaymentUrl: "https://buy.stripe.com/test_eVq4gz2443cN0p25Zv1wY02",
     description: "Recharge 600 FitTokens at USD $1 per token. Stream 600 video masterclasses (1 token each)."
+  }
+];
+
+// Monthly Membership Tiers
+export const membershipTiers = [
+  {
+    id: "monthly-pass",
+    name: "Monthly All-Access Pass",
+    tokensCost: 99,
+    priceUsd: 99,
+    interval: "month",
+    stripePriceId: "price_1USPk9I8bClhBF4PX306QWo2",
+    stripePaymentUrl: "https://buy.stripe.com/test_4gM8wP244eVv3Be5Zv1wY03",
+    description: "Unlimited streaming of all 31+ workout masterclasses with zero token deductions.",
+    features: [
+      "Stream all 31+ video tutorials with 0 token deductions",
+      "Priority consultation scheduling with Trainer David",
+      "Exclusive biomechanical exercise breakdowns & updates",
+      "Cancel anytime with 1-click in your Stripe portal"
+    ]
   }
 ];
 
