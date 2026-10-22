@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Google, Check, Sparkles, Lock, Mail, ArrowRight, User } from './Icons';
 import { signInWithGoogle } from '../firebase';
+import { syncUserProfile } from '../services/userDirectory';
 import { authenticateWithBackupPassword, registerOrUpdateGoogleUser, getRegisteredUsers } from '../data/adminStore';
 
 export default function AuthModal({ isOpen, onClose, onLoginSuccess }) {
@@ -49,6 +50,14 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess }) {
         setGoogleError('Google sign-in failed. Please try again, or use the Password Backup option.');
       }
       return;
+    }
+
+    // Register in Firestore (#pt, as supporter) straight away, so the member is listed
+    // even if they close the modal at the backup-password step
+    try {
+      await syncUserProfile(user);
+    } catch (e) {
+      console.error('Failed to register user in Firestore:', e);
     }
 
     handleGoogleProfileReceived({
