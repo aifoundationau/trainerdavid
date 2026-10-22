@@ -8,3 +8,9 @@ __pycache__/
 dist/
 build/
 .DS_Store
+secrets/
+*-firebase-adminsdk-*.json
+# Firebase Admin credentials
+secrets/
+*-firebase-adminsdk-*.json
+service-account*.json

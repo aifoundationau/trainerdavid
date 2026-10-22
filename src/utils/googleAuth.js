@@ -1,6 +1,6 @@
 // Google Authentication Utilities using Google Identity Services (GIS)
 
-export const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || "102300054859-2f1ln047ria0c21833imogu2o12n4ugg.apps.googleusercontent.com";
+export const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || "614773274800-9pooin0jia9ij91qjlk7r6r6ne02mbhg.apps.googleusercontent.com";
 
 const STORAGE_KEY = "trainer_david_user";
 
