@@ -13,6 +13,7 @@ import AdminPage from './components/AdminPage';
 import CoachDavidAiModal from './components/CoachDavidAiModal';
 import { Flame, Sparkles, X, Coins, CheckCircle2 } from './components/Icons';
 import { getStoredUser, setStoredUser, clearStoredUser } from './utils/googleAuth';
+import { auth, onAuthStateChanged, logoutUser } from './firebase';
 import { registerOrUpdateGoogleUser, addAdminPurchase, getRegisteredUsers } from './data/adminStore';
 
 export default function App() {
@@ -56,6 +57,42 @@ export default function App() {
       }
     }
   };
+
+  // Keep the session in sync with Firebase Auth across page reloads
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (fbUser) => {
+      const stored = getStoredUser();
+
+      if (fbUser) {
+        // Restore a registered user's session from the verified Firebase identity.
+        // Unregistered users finish registration in the AuthModal flow instead.
+        const match = getRegisteredUsers().find(u => u.email?.toLowerCase() === fbUser.email?.toLowerCase());
+        if (!match) return;
+        const sameUser = stored?.email?.toLowerCase() === fbUser.email?.toLowerCase();
+        const sessionUser = {
+          ...(sameUser ? stored : {}),
+          id: fbUser.uid,
+          email: match.email,
+          name: match.name,
+          givenName: match.givenName,
+          picture: match.picture,
+          role: match.role,
+          tokens: match.tokens,
+          provider: 'firebase'
+        };
+        setUser(sessionUser);
+        setStoredUser(sessionUser);
+        setTokens(match.tokens ?? 0);
+      } else if (stored?.provider === 'firebase') {
+        // Firebase session ended (signed out or expired): drop the stored Google session.
+        // Backup-password sessions have no Firebase session and are left alone.
+        setUser(null);
+        clearStoredUser();
+        setTokens(0);
+      }
+    });
+    return unsubscribe;
+  }, []);
 
   // Process Stripe Checkout redirect callbacks (?session_id=...&stripe_success=true)
   useEffect(() => {
@@ -104,8 +141,8 @@ export default function App() {
   // Google Login & Registration:
   // Rule: If people register now, they become a supporter, no other functions given (0 tokens)
   const handleLoginSuccess = (userProfile) => {
-    // Register or retrieve user from Admin store with given role
-    const registered = registerOrUpdateGoogleUser(userProfile, '', userProfile.role);
+    // Register or retrieve user from Admin store (new users default to Supporter; existing roles are kept)
+    const registered = registerOrUpdateGoogleUser(userProfile, '');
     const updatedUser = registered ? { ...userProfile, role: registered.role, tokens: registered.tokens } : { ...userProfile, role: userProfile.role || 'supporter', tokens: 0 };
     setUser(updatedUser);
     setStoredUser(updatedUser);
@@ -136,7 +173,8 @@ export default function App() {
     setAdminTab(registered?.role === 'superadmin' ? 'users' : 'tokens');
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    await logoutUser();
     setUser(null);
     clearStoredUser();
     setTokens(0);

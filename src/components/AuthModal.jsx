@@ -1,11 +1,13 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { X, Google, ShieldCheck, Check, Sparkles, Lock, Mail, ArrowRight, User } from './Icons';
-import { GOOGLE_CLIENT_ID, parseJwt } from '../utils/googleAuth';
+import React, { useState, useEffect } from 'react';
+import { X, Google, Check, Sparkles, Lock, Mail, ArrowRight, User } from './Icons';
+import { signInWithGoogle } from '../firebase';
 import { authenticateWithBackupPassword, registerOrUpdateGoogleUser, getRegisteredUsers } from '../data/adminStore';
 
 export default function AuthModal({ isOpen, onClose, onLoginSuccess }) {
-  const googleBtnRef = useRef(null);
-  
+  // Firebase Google sign-in state
+  const [googleLoading, setGoogleLoading] = useState(false);
+  const [googleError, setGoogleError] = useState('');
+
   // Modes: 'google', 'set_password_step', 'backup_login'
   const [authMode, setAuthMode] = useState('google');
   
@@ -21,12 +23,6 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess }) {
   const [loginPassword, setLoginPassword] = useState('');
   const [loginError, setLoginError] = useState('');
 
-  // Direct Google Email input (for instant sign in / when Google popup origin is blocked)
-  const [directEmail, setDirectEmail] = useState('');
-  
-  // Role given under Google login button
-  const [selectedRole, setSelectedRole] = useState('supporter');
-
   // Reset modal state upon open
   useEffect(() => {
     if (isOpen) {
@@ -37,62 +33,33 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess }) {
       setConfirmPassword('');
       setStepError('');
       setLoginError('');
+      setGoogleError('');
     }
   }, [isOpen]);
 
-  // Google Identity Services (GIS) Button Initialization
-  useEffect(() => {
-    if (!isOpen || authMode !== 'google') return;
+  // Firebase Google Sign-In (identity verified by Firebase Auth)
+  const handleFirebaseGoogle = async () => {
+    setGoogleError('');
+    setGoogleLoading(true);
+    const { user, error } = await signInWithGoogle();
+    setGoogleLoading(false);
 
-    const renderGoogleButton = () => {
-      if (window.google?.accounts?.id && googleBtnRef.current) {
-        try {
-          window.google.accounts.id.initialize({
-            client_id: GOOGLE_CLIENT_ID,
-            callback: (response) => {
-              if (response.credential) {
-                const profile = parseJwt(response.credential);
-                if (profile) {
-                  handleGoogleProfileReceived({
-                    id: profile.sub,
-                    email: profile.email,
-                    name: profile.name,
-                    givenName: profile.given_name,
-                    picture: profile.picture
-                  });
-                }
-              }
-            }
-          });
-
-          googleBtnRef.current.innerHTML = "";
-          window.google.accounts.id.renderButton(googleBtnRef.current, {
-            type: 'standard',
-            theme: 'filled_black',
-            size: 'large',
-            text: 'continue_with',
-            shape: 'pill',
-            width: 320,
-            logo_alignment: 'left'
-          });
-        } catch (err) {
-          console.error("Error initializing Google Identity:", err);
-        }
+    if (error || !user) {
+      if (error?.code !== 'auth/popup-closed-by-user' && error?.code !== 'auth/cancelled-popup-request') {
+        setGoogleError('Google sign-in failed. Please try again, or use the Password Backup option.');
       }
-    };
-
-    if (window.google?.accounts?.id) {
-      renderGoogleButton();
-    } else {
-      const interval = setInterval(() => {
-        if (window.google?.accounts?.id) {
-          clearInterval(interval);
-          renderGoogleButton();
-        }
-      }, 200);
-      return () => clearInterval(interval);
+      return;
     }
-  }, [isOpen, authMode]);
+
+    handleGoogleProfileReceived({
+      id: user.uid,
+      email: user.email,
+      name: user.displayName || user.email.split('@')[0],
+      givenName: user.displayName?.split(' ')[0],
+      picture: user.photoURL || '',
+      provider: 'firebase'
+    });
+  };
 
   // When Google profile is received, ask for Email + Secondary Backup Password
   const handleGoogleProfileReceived = (profile) => {
@@ -103,9 +70,9 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess }) {
     const users = getRegisteredUsers();
     const existing = users.find(u => u.email.toLowerCase() === profile.email.toLowerCase());
     if (existing && existing.backupPassword) {
-      // User already has backup password set up: complete login immediately with given role
-      const updatedUser = registerOrUpdateGoogleUser(profile, '', selectedRole);
-      onLoginSuccess(updatedUser || { ...profile, role: selectedRole });
+      // User already has backup password set up: complete login immediately with their stored role
+      const updatedUser = registerOrUpdateGoogleUser(profile, '');
+      onLoginSuccess({ ...(updatedUser || { ...profile, role: 'supporter' }), provider: profile.provider });
       onClose();
     } else {
       // Prompt user to add secondary backup password
@@ -133,15 +100,14 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess }) {
       return;
     }
 
-    // Save to user account in database with backup password and given role
+    // Save to user account in database with backup password (role is never chosen by the user).
+    // Email stays the one verified by Google.
     const profileToSave = {
       ...pendingGoogleProfile,
-      email: backupEmail.trim(),
-      role: selectedRole
     };
 
-    const saved = registerOrUpdateGoogleUser(profileToSave, backupPassword, selectedRole);
-    onLoginSuccess(saved || profileToSave);
+    const saved = registerOrUpdateGoogleUser(profileToSave, backupPassword);
+    onLoginSuccess({ ...(saved || profileToSave), provider: profileToSave.provider });
     onClose();
   };
 
@@ -149,10 +115,9 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess }) {
   const handleSkipBackupPassword = () => {
     const profileToSave = {
       ...pendingGoogleProfile,
-      role: selectedRole
     };
-    const saved = registerOrUpdateGoogleUser(profileToSave, '', selectedRole);
-    onLoginSuccess(saved || profileToSave);
+    const saved = registerOrUpdateGoogleUser(profileToSave, '');
+    onLoginSuccess({ ...(saved || profileToSave), provider: profileToSave.provider });
     onClose();
   };
 
@@ -308,118 +273,38 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess }) {
               marginBottom: '1rem',
               width: '100%'
             }}>
-              <div ref={googleBtnRef} style={{ minHeight: '44px', width: '100%', display: 'flex', justifyContent: 'center' }} />
-            </div>
-
-            {/* Role Given Under Google Login Button */}
-            <div style={{
-              background: 'rgba(255, 255, 255, 0.04)',
-              border: '1px solid var(--border-subtle)',
-              borderRadius: '12px',
-              padding: '0.85rem 1rem',
-              marginBottom: '1.25rem',
-              width: '100%'
-            }}>
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                marginBottom: '0.45rem'
-              }}>
-                <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#fff', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                  <ShieldCheck size={15} color="var(--accent-orange)" />
-                  Role Given for Google Account:
-                </span>
-                <span className={
-                  selectedRole === 'superadmin' ? 'badge badge-red' :
-                  selectedRole === 'doctor' ? 'badge badge-cyan' :
-                  selectedRole === 'accountant' ? 'badge badge-purple' :
-                  (selectedRole === 'admin' || selectedRole === 'trainer') ? 'badge badge-orange' :
-                  'badge badge-lime'
-                } style={{ fontSize: '0.68rem', padding: '2px 7px' }}>
-                  {selectedRole.toUpperCase()}
-                </span>
-              </div>
-
-              <select
-                value={selectedRole}
-                onChange={(e) => setSelectedRole(e.target.value)}
-                id="google-login-role-select"
+              <button
+                type="button"
+                onClick={handleFirebaseGoogle}
+                disabled={googleLoading}
                 style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '0.6rem',
                   width: '100%',
-                  padding: '0.6rem 0.8rem',
-                  background: '#0d111c',
+                  maxWidth: '320px',
+                  minHeight: '44px',
+                  padding: '0.65rem 1.25rem',
+                  borderRadius: '999px',
                   border: '1px solid var(--border-subtle)',
-                  borderRadius: '8px',
+                  background: '#131314',
                   color: '#fff',
-                  fontSize: '0.84rem',
+                  fontSize: '0.92rem',
                   fontWeight: 600,
-                  cursor: 'pointer'
+                  cursor: googleLoading ? 'wait' : 'pointer',
+                  opacity: googleLoading ? 0.7 : 1
                 }}
               >
-                <option value="supporter">⭐ Supporter (Workouts & FitTokens)</option>
-                <option value="trainer">🏋️ Trainer / Coach (Coaching Hub)</option>
-                <option value="doctor">🩺 Medical Doctor / Physiotherapist</option>
-                <option value="accountant">💼 Financial Auditor / Accountant</option>
-                <option value="admin">👑 System Administrator</option>
-                <option value="superadmin">🔥 Firebase SuperAdmin</option>
-              </select>
-              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.35rem' }}>
-                Account will be granted this role upon Google Sign-In.
-              </div>
-            </div>
+                <Google size={18} />
+                {googleLoading ? 'Signing in…' : 'Continue with Google'}
+              </button>
 
-            {/* And — or sign in with another Google Email — */}
-            <div style={{
-              marginBottom: '1.25rem',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '0.55rem'
-            }}>
-              <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)', textAlign: 'center' }}>
-                — or sign in with another Google Email —
-              </div>
-
-              <div style={{ display: 'flex', gap: '0.4rem' }}>
-                <input
-                  type="email"
-                  value={directEmail}
-                  onChange={(e) => setDirectEmail(e.target.value)}
-                  placeholder="Enter your Google email (e.g. support@aifoundation.net.au)"
-                  style={{
-                    flex: 1,
-                    padding: '0.7rem 0.85rem',
-                    background: '#0d111c',
-                    border: '1px solid var(--border-subtle)',
-                    borderRadius: '8px',
-                    color: '#fff',
-                    fontSize: '0.86rem'
-                  }}
-                />
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (directEmail.trim()) {
-                      handleGoogleProfileReceived({
-                        id: `google_${directEmail.replace(/[^a-zA-Z0-9]/g, '_')}`,
-                        email: directEmail.trim(),
-                        name: directEmail.split('@')[0],
-                        givenName: directEmail.split('@')[0],
-                        picture: "",
-                        role: selectedRole
-                      });
-                    }
-                  }}
-                  className="btn-primary"
-                  style={{
-                    padding: '0.7rem 1.1rem',
-                    fontSize: '0.84rem',
-                    whiteSpace: 'nowrap'
-                  }}
-                >
-                  Sign In →
-                </button>
-              </div>
+              {googleError && (
+                <div style={{ marginTop: '0.6rem', fontSize: '0.8rem', color: '#f87171', textAlign: 'center' }}>
+                  {googleError}
+                </div>
+              )}
             </div>
 
             {/* Password Backup (Fallback) Link */}
@@ -502,17 +387,17 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess }) {
               <input
                 type="email"
                 value={backupEmail}
-                onChange={e => setBackupEmail(e.target.value)}
+                readOnly
                 placeholder="you@gmail.com"
-                required
                 style={{
                   width: '100%',
                   padding: '0.75rem',
                   background: '#0d111c',
                   border: '1px solid var(--border-subtle)',
                   borderRadius: '10px',
-                  color: '#fff',
-                  fontSize: '0.9rem'
+                  color: 'var(--text-secondary)',
+                  fontSize: '0.9rem',
+                  cursor: 'not-allowed'
                 }}
               />
             </div>
