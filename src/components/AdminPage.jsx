@@ -40,6 +40,7 @@ import {
   preauthorizeUserRole
 } from '../data/adminStore';
 import { listPtUsers, setUserRole, adjustRemoteTokens } from '../services/userDirectory';
+import { auth } from '../firebase';
 import { tokenPackages } from '../data/services';
 import { startStripeCheckout } from '../utils/stripeCheckout';
 
@@ -75,6 +76,11 @@ export default function AdminPage({
     // SuperAdmins and admins (the roles Firestore rules allow to read all profiles) also see
     // every Trainer David (#pt) member. Local-only entries (e.g. pre-authorized emails) follow.
     if (!isSuperAdmin && userRole !== 'admin') return;
+    if (!auth.currentUser) {
+      // Firestore rules need a Firebase (Google) session; Password Backup logins don't have one
+      showToast('Sign in with Google (not Password Backup) to load registered members from the database.');
+      return;
+    }
     try {
       const remoteUsers = await listPtUsers();
       const remoteEmails = new Set(remoteUsers.map(u => u.email?.toLowerCase()));
