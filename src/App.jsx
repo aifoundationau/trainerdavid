@@ -14,6 +14,7 @@ import CoachDavidAiModal from './components/CoachDavidAiModal';
 import { Flame, Sparkles, X, Coins, CheckCircle2 } from './components/Icons';
 import { getStoredUser, setStoredUser, clearStoredUser } from './utils/googleAuth';
 import { auth, onAuthStateChanged, logoutUser } from './firebase';
+import { syncUserProfile, saveOwnTokens, toAppRole } from './services/userDirectory';
 import { registerOrUpdateGoogleUser, addAdminPurchase, getRegisteredUsers } from './data/adminStore';
 
 export default function App() {
@@ -58,41 +59,67 @@ export default function App() {
     }
   };
 
+  // True once the signed-in user's FitToken balance has been loaded from Firestore
+  const [remoteProfileReady, setRemoteProfileReady] = useState(false);
+
+  // Load (or create, as supporter) the user's Firestore profile and apply its role and tokens.
+  // Returns the session user, or null when the user is not a #pt member and `register` is false.
+  const applyFirestoreProfile = async (fbUser, { register = true } = {}) => {
+    try {
+      const localMatch = getRegisteredUsers().find(u => u.email?.toLowerCase() === fbUser.email?.toLowerCase());
+      const profile = await syncUserProfile(fbUser, { fallbackTokens: localMatch?.tokens ?? 0, register });
+      if (!profile) return null;
+
+      const stored = getStoredUser();
+      const sameUser = stored?.email?.toLowerCase() === fbUser.email?.toLowerCase();
+      const sessionUser = {
+        ...(sameUser ? stored : {}),
+        id: fbUser.uid,
+        email: fbUser.email,
+        name: profile.displayName || localMatch?.name || fbUser.email.split('@')[0],
+        givenName: (profile.displayName || localMatch?.givenName || '').split(' ')[0] || 'User',
+        picture: profile.photoURL || localMatch?.picture || '',
+        role: toAppRole(profile, fbUser.email),
+        tokens: profile.fitTokens ?? 0,
+        provider: 'firebase'
+      };
+      setUser(sessionUser);
+      setStoredUser(sessionUser);
+      setTokens(sessionUser.tokens);
+      setRemoteProfileReady(true);
+      return sessionUser;
+    } catch (e) {
+      console.error('Failed to sync user profile with Firestore:', e);
+      return null;
+    }
+  };
+
   // Keep the session in sync with Firebase Auth across page reloads
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (fbUser) => {
-      const stored = getStoredUser();
-
       if (fbUser) {
-        // Restore a registered user's session from the verified Firebase identity.
-        // Unregistered users finish registration in the AuthModal flow instead.
-        const match = getRegisteredUsers().find(u => u.email?.toLowerCase() === fbUser.email?.toLowerCase());
-        if (!match) return;
-        const sameUser = stored?.email?.toLowerCase() === fbUser.email?.toLowerCase();
-        const sessionUser = {
-          ...(sameUser ? stored : {}),
-          id: fbUser.uid,
-          email: match.email,
-          name: match.name,
-          givenName: match.givenName,
-          picture: match.picture,
-          role: match.role,
-          tokens: match.tokens,
-          provider: 'firebase'
-        };
-        setUser(sessionUser);
-        setStoredUser(sessionUser);
-        setTokens(match.tokens ?? 0);
-      } else if (stored?.provider === 'firebase') {
-        // Firebase session ended (signed out or expired): drop the stored Google session.
-        // Backup-password sessions have no Firebase session and are left alone.
-        setUser(null);
-        clearStoredUser();
-        setTokens(0);
+        // Restore an existing #pt member's session from the verified Firebase identity.
+        // New users finish registration in the AuthModal flow instead.
+        applyFirestoreProfile(fbUser, { register: false });
+      } else {
+        setRemoteProfileReady(false);
+        if (getStoredUser()?.provider === 'firebase') {
+          // Firebase session ended (signed out or expired): drop the stored Google session.
+          // Backup-password sessions have no Firebase session and are left alone.
+          setUser(null);
+          clearStoredUser();
+          setTokens(0);
+        }
       }
     });
     return unsubscribe;
   }, []);
+
+  // Save the signed-in user's FitToken balance to Firestore whenever it changes
+  useEffect(() => {
+    if (!remoteProfileReady || user?.provider !== 'firebase' || !auth.currentUser) return;
+    saveOwnTokens(auth.currentUser.uid, tokens).catch(e => console.error('Failed to save FitTokens:', e));
+  }, [tokens, remoteProfileReady]);
 
   // Process Stripe Checkout redirect callbacks (?session_id=...&stripe_success=true)
   useEffect(() => {
@@ -140,12 +167,20 @@ export default function App() {
 
   // Google Login & Registration:
   // Rule: If people register now, they become a supporter, no other functions given (0 tokens)
-  const handleLoginSuccess = (userProfile) => {
+  const handleLoginSuccess = async (userProfile) => {
     // Register or retrieve user from Admin store (new users default to Supporter; existing roles are kept)
-    const registered = registerOrUpdateGoogleUser(userProfile, '');
+    let registered = registerOrUpdateGoogleUser(userProfile, '');
     const updatedUser = registered ? { ...userProfile, role: registered.role, tokens: registered.tokens } : { ...userProfile, role: userProfile.role || 'supporter', tokens: 0 };
     setUser(updatedUser);
     setStoredUser(updatedUser);
+
+    // Google sign-ins are registered in Firestore (#pt); its role and FitTokens are authoritative
+    if (userProfile.provider === 'firebase' && auth.currentUser) {
+      const remoteUser = await applyFirestoreProfile(auth.currentUser);
+      if (remoteUser) {
+        registered = { ...(registered || {}), ...remoteUser };
+      }
+    }
 
     if (registered) {
       setTokens(registered.tokens);

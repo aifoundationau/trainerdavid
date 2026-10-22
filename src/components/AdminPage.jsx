@@ -39,6 +39,7 @@ import {
   updateUserRole,
   preauthorizeUserRole
 } from '../data/adminStore';
+import { listPtUsers, setUserRole, adjustRemoteTokens } from '../services/userDirectory';
 import { tokenPackages } from '../data/services';
 import { startStripeCheckout } from '../utils/stripeCheckout';
 
@@ -66,9 +67,26 @@ export default function AdminPage({
   // Token Purchase processing state on Admin Page
   const [processingPackId, setProcessingPackId] = useState(null);
 
-  const loadData = () => {
-    setUsers(getRegisteredUsers());
+  const loadData = async () => {
+    const localUsers = getRegisteredUsers();
+    setUsers(localUsers);
     setPurchases(getAdminPurchases());
+
+    // SuperAdmins and admins (the roles Firestore rules allow to read all profiles) also see
+    // every Trainer David (#pt) member. Local-only entries (e.g. pre-authorized emails) follow.
+    if (!isSuperAdmin && userRole !== 'admin') return;
+    try {
+      const remoteUsers = await listPtUsers();
+      const remoteEmails = new Set(remoteUsers.map(u => u.email?.toLowerCase()));
+      const localByEmail = new Map(localUsers.map(u => [u.email?.toLowerCase(), u]));
+      setUsers([
+        ...remoteUsers.map(u => ({ ...u, hasBackupPassword: localByEmail.get(u.email?.toLowerCase())?.hasBackupPassword || false })),
+        ...localUsers.filter(u => !remoteEmails.has(u.email?.toLowerCase()))
+      ]);
+    } catch (e) {
+      console.error('Failed to load users from Firestore:', e);
+      showToast('Could not load registered users from the database.');
+    }
   };
 
   useEffect(() => {
@@ -138,8 +156,20 @@ export default function AdminPage({
   };
 
   // Handle Manual Token Adjustment for Users
-  const handleGrantTokens = (userId, delta, userName) => {
-    const updated = adjustUserTokens(userId, delta);
+  const handleGrantTokens = async (userId, delta, userName) => {
+    const target = users.find(u => u.id === userId);
+    let updated = null;
+    if (target?.source === 'firestore') {
+      try {
+        updated = await adjustRemoteTokens(target.uid, delta);
+      } catch (e) {
+        console.error('Failed to update FitTokens in Firestore:', e);
+        showToast('Only the SuperAdmin can change another member\'s FitTokens.');
+        return;
+      }
+    } else {
+      updated = adjustUserTokens(userId, delta);
+    }
     if (updated) {
       addAdminPurchase({
         clientName: userName,
@@ -155,9 +185,23 @@ export default function AdminPage({
   };
 
   // SuperAdmin Function: Grant Admin Credentials to Registered Users
-  const handleRoleChange = (userId, newRole, userName) => {
+  const handleRoleChange = async (userId, newRole, userName) => {
     if (!isSuperAdmin) {
       showToast("Access Denied: Only the Firebase SuperAdmin can assign credentials.");
+      return;
+    }
+    const target = users.find(u => u.id === userId);
+    if (target?.source === 'firestore') {
+      try {
+        await setUserRole(target.uid, newRole, user?.email);
+      } catch (e) {
+        console.error('Failed to update role in Firestore:', e);
+        showToast('Failed to update user credential in the database.');
+        return;
+      }
+      loadData();
+      if (onRefreshAppState) onRefreshAppState();
+      showToast(`SuperAdmin granted ${newRole.toUpperCase()} credentials to ${userName}!`);
       return;
     }
     const res = updateUserRole(userId, newRole);
