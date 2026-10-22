@@ -39,7 +39,8 @@ import {
   updateUserRole,
   preauthorizeUserRole
 } from '../data/adminStore';
-import { listPtUsers, setUserRole, adjustRemoteTokens } from '../services/userDirectory';
+import { listPtUsers, setUserRole } from '../services/userDirectory';
+import { grantTokens } from '../services/tokenApi';
 import { auth } from '../firebase';
 import { tokenPackages } from '../data/services';
 import { startStripeCheckout } from '../utils/stripeCheckout';
@@ -133,7 +134,7 @@ export default function AdminPage({
     }
   };
 
-  // Handle Token Recharge Directly on Admin Page
+  // SuperAdmin sandbox credit: added to the SuperAdmin's own balance on the server
   const handleRechargeTokens = (amountToRecharge) => {
     const num = parseInt(amountToRecharge, 10);
     if (isNaN(num) || num <= 0) {
@@ -141,8 +142,12 @@ export default function AdminPage({
       return;
     }
     setProcessingPackId(`recharge-${num}`);
-    setTimeout(() => {
-      onAddTokens(num);
+    setTimeout(async () => {
+      const ok = await onAddTokens(num);
+      if (!ok) {
+        setProcessingPackId(null);
+        return;
+      }
 
       // Register purchase in Admin Store (1 token = USD $1.00)
       addAdminPurchase({
@@ -167,10 +172,11 @@ export default function AdminPage({
     let updated = null;
     if (target?.source === 'firestore') {
       try {
-        updated = await adjustRemoteTokens(target.uid, delta);
+        const { balance, email } = await grantTokens(target.uid, delta);
+        updated = { ...target, email: email || target.email, tokens: balance };
       } catch (e) {
-        console.error('Failed to update FitTokens in Firestore:', e);
-        showToast('Only the SuperAdmin can change another member\'s FitTokens.');
+        console.error('Failed to update FitTokens:', e);
+        showToast(e.message || 'Failed to update FitTokens.');
         return;
       }
     } else {
@@ -701,27 +707,29 @@ export default function AdminPage({
                             <span>{isRedirectingStripe === pack.id ? "Connecting to Stripe..." : `Pay $${pack.priceUsd} with Stripe`}</span>
                           </button>
 
-                          <button
-                            onClick={() => handleRechargeTokens(pack.tokens)}
-                            disabled={isProcessing}
-                            style={{
-                              width: '100%',
-                              padding: '0.5rem',
-                              fontSize: '0.78rem',
-                              background: 'rgba(255, 255, 255, 0.05)',
-                              border: '1px solid var(--border-subtle)',
-                              borderRadius: '8px',
-                              color: 'var(--text-secondary)',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              gap: '0.35rem',
-                              cursor: 'pointer'
-                            }}
-                          >
-                            <Coins size={13} color="#f59e0b" />
-                            <span>{isProcessing ? "Crediting..." : `Sandbox Free Credit (+${pack.tokens})`}</span>
-                          </button>
+                          {isSuperAdmin && (
+                            <button
+                              onClick={() => handleRechargeTokens(pack.tokens)}
+                              disabled={isProcessing}
+                              style={{
+                                width: '100%',
+                                padding: '0.5rem',
+                                fontSize: '0.78rem',
+                                background: 'rgba(255, 255, 255, 0.05)',
+                                border: '1px solid var(--border-subtle)',
+                                borderRadius: '8px',
+                                color: 'var(--text-secondary)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '0.35rem',
+                                cursor: 'pointer'
+                              }}
+                            >
+                              <Coins size={13} color="#f59e0b" />
+                              <span>{isProcessing ? "Crediting..." : `Sandbox Free Credit (+${pack.tokens})`}</span>
+                            </button>
+                          )}
                         </div>
                       </div>
                     );
@@ -820,27 +828,29 @@ export default function AdminPage({
                         <span>{isRedirectingStripe === 'custom' ? "Connecting to Stripe..." : `Pay $${customAmount || 0} with Stripe`}</span>
                       </button>
 
-                      <button
-                        onClick={() => handleRechargeTokens(customAmount)}
-                        disabled={processingPackId === `recharge-${customAmount}`}
-                        style={{
-                          width: '100%',
-                          padding: '0.5rem',
-                          fontSize: '0.78rem',
-                          background: 'rgba(255, 255, 255, 0.05)',
-                          border: '1px solid var(--border-subtle)',
-                          borderRadius: '8px',
-                          color: 'var(--text-secondary)',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          gap: '0.35rem',
-                          cursor: 'pointer'
-                        }}
-                      >
-                        <Coins size={13} color="#f59e0b" />
-                        <span>{processingPackId === `recharge-${customAmount}` ? "Crediting..." : `Sandbox Free Credit (+${customAmount || 0})`}</span>
-                      </button>
+                      {isSuperAdmin && (
+                        <button
+                          onClick={() => handleRechargeTokens(customAmount)}
+                          disabled={processingPackId === `recharge-${customAmount}`}
+                          style={{
+                            width: '100%',
+                            padding: '0.5rem',
+                            fontSize: '0.78rem',
+                            background: 'rgba(255, 255, 255, 0.05)',
+                            border: '1px solid var(--border-subtle)',
+                            borderRadius: '8px',
+                            color: 'var(--text-secondary)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '0.35rem',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          <Coins size={13} color="#f59e0b" />
+                          <span>{processingPackId === `recharge-${customAmount}` ? "Crediting..." : `Sandbox Free Credit (+${customAmount || 0})`}</span>
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>

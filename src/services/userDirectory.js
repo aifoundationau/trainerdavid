@@ -58,9 +58,9 @@ export function toPanelUser(profile) {
 }
 
 // Create (as supporter) or refresh the signed-in user's profile and tag it with #pt.
-// `fallbackTokens` seeds fitTokens for users who only had a local balance before.
+// FitTokens are never written here: only the server functions in api/tokens/ change them.
 // With `register: false` it only refreshes existing #pt members and returns null otherwise.
-export async function syncUserProfile(fbUser, { fallbackTokens = 0, register = true } = {}) {
+export async function syncUserProfile(fbUser, { register = true } = {}) {
   const ref = doc(db, 'users', fbUser.uid);
   const snap = await getDoc(ref);
   const now = new Date().toISOString();
@@ -105,7 +105,6 @@ export async function syncUserProfile(fbUser, { fallbackTokens = 0, register = t
     loginCount: increment(1)
   };
   if (!existing.ptRegisteredAt) patch.ptRegisteredAt = now;
-  if (existing.fitTokens === undefined) patch.fitTokens = fallbackTokens;
   if (!existing.displayName && fbUser.displayName) patch.displayName = fbUser.displayName;
   if (!existing.photoURL && fbUser.photoURL) patch.photoURL = fbUser.photoURL;
   await updateDoc(ref, patch);
@@ -115,13 +114,8 @@ export async function syncUserProfile(fbUser, { fallbackTokens = 0, register = t
     ...patch,
     apps: Array.from(new Set([...(existing.apps || []), APP_TAG])),
     loginCount: (existing.loginCount || 0) + 1,
-    fitTokens: existing.fitTokens ?? fallbackTokens
+    fitTokens: existing.fitTokens ?? 0
   };
-}
-
-// Save the signed-in user's own FitToken balance
-export async function saveOwnTokens(uid, tokens) {
-  await updateDoc(doc(db, 'users', uid), { fitTokens: tokens, updatedAt: new Date().toISOString() });
 }
 
 // Admin: list every Trainer David (#pt) member
@@ -141,12 +135,4 @@ export async function setUserRole(uid, role, byEmail) {
     role_updated_by: byEmail || '',
     updatedAt: now
   });
-}
-
-// SuperAdmin: add or remove FitTokens for a member
-export async function adjustRemoteTokens(uid, delta) {
-  const ref = doc(db, 'users', uid);
-  await updateDoc(ref, { fitTokens: increment(delta), updatedAt: new Date().toISOString() });
-  const snap = await getDoc(ref);
-  return toPanelUser({ uid, ...snap.data() });
 }

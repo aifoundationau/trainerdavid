@@ -4,6 +4,7 @@
  */
 
 import { tokenPackages, membershipTiers } from '../data/services';
+import { auth } from '../firebase';
 
 /**
  * Initiates Stripe Checkout for a token recharge package or membership pass
@@ -21,9 +22,11 @@ export async function startStripeCheckout({ packageId, customAmount, user }) {
   const fallbackUrl = pkg?.stripePaymentUrl;
 
   try {
+    // The server ties the session to the signed-in member so the paid tokens can be credited
+    const idToken = auth.currentUser ? await auth.currentUser.getIdToken() : '';
     const res = await fetch('/api/create-checkout-session', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...(idToken ? { Authorization: `Bearer ${idToken}` } : {}) },
       body: JSON.stringify({
         packageId,
         customAmount,

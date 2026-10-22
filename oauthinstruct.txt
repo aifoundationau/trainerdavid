@@ -1,0 +1,317 @@
+WEB APP SIGN-IN, ROLES & ADMIN SETUP GUIDE
+==========================================
+Last updated: 22 October 2026
+Worked example: Trainer David (https://pt.aifoundation.net.au), app tag "pt"
+
+Follow the parts in order. Each part says what it is for, what to click,
+and what goes wrong if you skip it.
+
+
+------------------------------------------------------------
+THE BIG PICTURE
+------------------------------------------------------------
+Five pieces work together:
+
+1. Google OAuth client (Google Cloud Console)
+   The "front door" Google shows when someone clicks "Continue with Google".
+   It must list every website address the app runs on.
+
+2. Firebase Authentication
+   Checks that the person really is who Google says, and gives them a
+   unique ID (the "uid"). It has its own list of allowed domains.
+
+3. Firestore database (collection "users")
+   Stores one record per person: name, email, role, FitTokens, app tags.
+   Shared by all AI Foundation apps, so each app adds its own tag.
+
+4. Firestore security rules
+   The bouncer. Decides who may read or change each record. This is what
+   stops a supporter from making themselves an admin.
+
+5. The web app + admin panel
+   Shows each person the screens their role allows. The SuperAdmin panel
+   lists every member and can change roles and tokens.
+
+Golden rule: the app decides what people SEE; the security rules decide
+what people can actually DO. Never rely on the app alone.
+
+
+------------------------------------------------------------
+PART 1: CREATE THE GOOGLE OAUTH CLIENT
+------------------------------------------------------------
+Skip this and you get: "Error 400: origin_mismatch"
+
+1. Open https://console.cloud.google.com/apis/credentials
+2. At the top, pick the project. Trainer David uses project number
+   614773274800 (the digits at the start of the client ID).
+3. Under "OAuth 2.0 Client IDs", open your Web client, or click
+   Create credentials > OAuth client ID > Web application.
+   (If asked, fill in the OAuth consent screen first.)
+4. Under "Authorized JavaScript origins", add every address the app uses:
+     https://pt.aifoundation.net.au
+     http://localhost:5173        (for testing on your computer)
+     http://localhost
+   Rules: start with https:// (or http:// for localhost), no slash at
+   the end, no path. www and non-www count as different addresses.
+5. Under "Authorized redirect URIs", add Firebase's sign-in handler:
+     https://ai-foundation-firebase.firebaseapp.com/__/auth/handler
+6. Click Save. Changes can take 5 minutes to a few hours.
+
+Trainer David's client ID:
+  614773274800-9pooin0jia9ij91qjlk7r6r6ne02mbhg.apps.googleusercontent.com
+
+
+------------------------------------------------------------
+PART 2: SET UP FIREBASE
+------------------------------------------------------------
+Skip this and you get: "auth/unauthorized-domain" or
+"auth/operation-not-allowed"
+
+A. Turn on Google sign-in
+   Firebase Console > your project (ai-foundation-firebase) >
+   Authentication > Sign-in method > Google > Enable > Save.
+   If you use your own OAuth client (like Trainer David), enter its
+   client ID and secret there.
+
+B. Add your domain
+   Authentication > Settings > Authorized domains > Add domain.
+   Type only the host, for example:  pt.aifoundation.net.au
+   (no https://, no slash). Each subdomain needs its own entry.
+
+C. Get the web settings ("web config")
+   Project settings > General > Your apps > (your Web app).
+   Copy the six values: apiKey, authDomain, projectId, storageBucket,
+   messagingSenderId, appId. These are public; safe to put in the app.
+
+D. Make sure Firestore exists
+   Firestore Database > it should show a "(default)" database.
+
+
+------------------------------------------------------------
+PART 3: PUT THE SETTINGS IN THE APP AND IN VERCEL
+------------------------------------------------------------
+Skip this and you get: the site won't load, or sign-in keeps failing
+even though the consoles look right.
+
+1. In the project folder, the file ".env" (never committed to git):
+     VITE_FIREBASE_API_KEY="..."
+     VITE_FIREBASE_AUTH_DOMAIN="ai-foundation-firebase.firebaseapp.com"
+     VITE_FIREBASE_PROJECT_ID="ai-foundation-firebase"
+     VITE_FIREBASE_STORAGE_BUCKET="..."
+     VITE_FIREBASE_MESSAGING_SENDER_ID="..."
+     VITE_FIREBASE_APP_ID="..."
+2. In Vercel: Project > Settings > Environment Variables. Add the same
+   six names and values, for Production and Preview.
+3. Redeploy. Vite copies these values in when the site is BUILT, so a
+   change only takes effect after a new deploy.
+
+Important: anything starting with VITE_ ends up inside the public
+website. Never put a secret (Stripe secret key, Gemini key, service
+account key) in a VITE_ variable.
+
+
+------------------------------------------------------------
+PART 4: THE SIGN-IN CODE
+------------------------------------------------------------
+How Trainer David does it (files in src/):
+
+- firebase.js     Starts Firebase, exports "auth" (sign-in) and "db"
+                  (database), and signInWithGoogle() which opens the
+                  Google popup.
+- AuthModal.jsx   One "Continue with Google" button. No role picker and
+                  no "type any email" box: people cannot choose their
+                  own role. After Google sign-in, the user is registered
+                  in the database straight away.
+- App.jsx         Listens for sign-in changes (onAuthStateChanged), so a
+                  person stays signed in after a page reload. Sign out
+                  calls logoutUser().
+
+Why this matters: Firebase verifies the Google account. The old method
+decoded Google's token in the browser without checking it, which let
+anyone pretend to be anyone.
+
+
+------------------------------------------------------------
+PART 5: SAVING USERS IN THE DATABASE (SUPPORTERS BY DEFAULT)
+------------------------------------------------------------
+File: src/services/userDirectory.js
+
+When someone signs in with Google for the first time, the app creates
+users/{their uid} in Firestore with:
+    role: "supporter"     status: "supporter"   classification: "Supporter"
+    fitTokens: 0          source: "pt"          tag: "pt"
+    apps: ["pt"]          plus name, email, photo and dates
+
+If the person already has a record from another AI Foundation app
+(for example "aifoundation" or "rto-ai"), the app does NOT change that
+app's tag. It only adds "pt" to the "apps" list. The admin panel lists
+everyone whose "apps" list contains "pt".
+
+For a new app: pick a short tag (for example "finance") and change
+APP_TAG at the top of userDirectory.js.
+
+
+------------------------------------------------------------
+PART 6: SECURITY RULES: WHO CAN DO WHAT
+------------------------------------------------------------
+Firebase Console > Firestore Database > Rules. These rules are shared
+by every app in the project, so change them carefully.
+
+What the current rules allow on "users":
+- Anyone signed in may create THEIR OWN record, but only as a
+  supporter (role, status = supporter; isSuperAdmin, isAdmin = false).
+- A person may read and update their own record, but may NEVER change
+  role, status, classification, isSuperAdmin, isAdmin or tags.
+- Admins and SuperAdmins may read everyone's record.
+- Only SuperAdmins may change roles or delete records.
+
+How the rules recognise a SuperAdmin (function isSuperAdmin):
+- by uid:   ZK79FRQoVlYhsgvMibhi81dRUWj2, L5euSJAfNKdDOX6mT0qmrCGjUA53
+- or by Google-verified email: support@aifoundation.net.au,
+  davidrobertson.info@gmail.com, david@aifoundation.com.au
+
+The rules only work when the person is signed in with GOOGLE. The
+"Password Backup" login has no Firebase sign-in, so the database
+treats that person as a stranger.
+
+
+------------------------------------------------------------
+PART 7: SETTING UP THE SUPERADMIN
+------------------------------------------------------------
+The SuperAdmin must be set in TWO places, and they must match:
+
+1. Security rules (the real power) - Part 6 above. Add the person's
+   uid (Firebase Console > Authentication > Users, copy the "User UID")
+   or their email to isSuperAdmin(), then click Publish.
+
+2. The app (what they see) - src/data/adminStore.js:
+     FIREBASE_SUPERADMIN_EMAIL = 'support@aifoundation.net.au'
+   This email always gets the SuperAdmin panel.
+
+Then:
+3. Sign in to the app with "Continue with Google" using that account.
+   (Not Password Backup.)
+4. Open the admin panel. You should see the Users tab with every
+   member tagged "pt".
+
+Optional, stronger: give the SuperAdmin a custom claim with the Admin
+SDK (Part 9): node scripts/set-admin.js support@aifoundation.net.au
+
+
+------------------------------------------------------------
+PART 8: ROLES AND PERMISSIONS
+------------------------------------------------------------
+Role        Who it is for                  What they can do
+----------  -----------------------------  --------------------------------
+Supporter   Everyone who registers         Buy FitTokens, watch masterclasses
+            (the default, 0 tokens)        (1 token each), book coaching.
+                                           Sees only their own data.
+Trainer     Workout / fitness coaches      Coaching hub: client form
+            (starts with 50 tokens)        reviews, training, progress logs.
+Doctor      Physiotherapists, doctors      Posture audits, joint pain
+            (starts with 50 tokens)        assessments, rehab routines.
+Accountant  Financial auditor              Token purchase ledgers, revenue,
+            (starts with 50 tokens)        invoices.
+Admin       Operations staff               Bookings, settings, client
+                                           messages. Can read every member
+                                           in the database.
+SuperAdmin  You (support@aifoundation...)  Everything, plus: assign roles,
+                                           give or remove FitTokens,
+                                           pre-authorize emails.
+
+How to give someone a role:
+1. They sign in once with Google (they become a Supporter).
+2. You sign in as SuperAdmin > admin panel > Users.
+3. Find them, choose the new role. It is saved in Firestore.
+4. They get the new role the next time they sign in.
+
+Note: "role" is shared across your apps. Making someone a Trainer here
+also changes the role your other apps see.
+
+
+------------------------------------------------------------
+PART 9: SECRET KEYS AND THE ADMIN SDK
+------------------------------------------------------------
+The Admin SDK is a "master key" for scripts that run on your computer
+or a server, never in the browser. It ignores the security rules.
+
+1. Make sure .gitignore contains:
+     secrets/
+     *-firebase-adminsdk-*.json
+     service-account*.json
+2. Firebase Console > Project settings > Service accounts >
+   Generate new private key. Save it as secrets/service-account.json.
+3. Run admin scripts, for example:
+     node scripts/set-admin.js someone@example.com
+     node scripts/set-admin.js someone@example.com --revoke
+4. On Vercel functions: paste the whole JSON into an environment
+   variable called FIREBASE_SERVICE_ACCOUNT (no VITE_ prefix).
+
+Never paste the key into a chat, email or commit. If you do, delete it
+in Google Cloud Console (IAM > Service Accounts > Keys) and make a new
+one.
+
+
+------------------------------------------------------------
+PART 10: TEST IT, STEP BY STEP
+------------------------------------------------------------
+1. Wait for Vercel to finish deploying.
+2. Open the site in a fresh tab. Press F12 > Application > Storage >
+   Clear site data. Then press Ctrl+Shift+R.
+3. Click "Continue with Google" and sign in with a test account.
+   It should say you are registered as a Supporter.
+4. Sign out.
+5. Sign in with "Continue with Google" as the SuperAdmin.
+6. Admin panel > Users: the test account should be listed as Supporter.
+7. Change its role to Trainer, sign out, sign in as the test account:
+   it should now be a Trainer.
+
+
+------------------------------------------------------------
+TROUBLESHOOTING (PROBLEMS WE ACTUALLY HIT)
+------------------------------------------------------------
+"Error 400: origin_mismatch"
+  The site address is missing from the OAuth client (Part 1), OR the app
+  is still sending an old client ID (Part 3). Check both.
+
+"Google sign-in failed" + console shows auth/user-disabled
+  That account is disabled in Firebase. Authentication > Users > find
+  the email > three dots > Enable account. (Disabled accounts are
+  blocked in every app that shares the project.)
+
+"auth/unauthorized-domain"
+  Add the domain in Firebase authorized domains (Part 2B).
+
+"Could not load registered users from the database"
+  You are not signed in with Google. Password Backup and old saved
+  sessions don't count. Sign out, then "Continue with Google".
+
+The admin panel doesn't show a new supporter
+  - Their browser was running old code. Clear site data, Ctrl+Shift+R,
+    sign in again.
+  - Check the console file name (index-XXXX.js) matches the live site.
+  - An ad blocker may block firestore.googleapis.com. Try incognito.
+
+"Cross-Origin-Opener-Policy policy would block the window.closed call"
+  Harmless warning from the Google popup. Ignore it.
+
+Sign-in works on your computer but not on the live site
+  Vercel's environment variables are missing or old, or the site was not
+  redeployed after changing them (Part 3).
+
+
+------------------------------------------------------------
+KNOWN LIMITS AND NEXT STEPS
+------------------------------------------------------------
+- People who registered before 22 Oct 2026 only appear in the panel
+  after they sign in with Google again.
+- Members can technically edit their own fitTokens (needed so the app
+  can save their spending). Fix: move token changes to a server function.
+- Pre-authorizing an email only works in the SuperAdmin's own browser.
+- The Password Backup login is stored in the browser only.
+- The Gemini API key is public (VITE_GEMINI_API_KEY). Make a new key,
+  keep it server-side only (no VITE_), and call Gemini from a Vercel
+  function.
+- The /api endpoints (Stripe checkout, Gemini) only exist on your
+  computer (vite dev server). Move them to Vercel functions in an api/
+  folder so they work on the live site.

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Navbar from './components/Navbar';
 import Hero from './components/Hero';
 import VideoGrid from './components/VideoGrid';
@@ -14,7 +14,8 @@ import CoachDavidAiModal from './components/CoachDavidAiModal';
 import { Flame, Sparkles, X, Coins, CheckCircle2 } from './components/Icons';
 import { getStoredUser, setStoredUser, clearStoredUser } from './utils/googleAuth';
 import { auth, onAuthStateChanged, logoutUser } from './firebase';
-import { syncUserProfile, saveOwnTokens, toAppRole } from './services/userDirectory';
+import { syncUserProfile, toAppRole } from './services/userDirectory';
+import { spendTokens, grantTokens, claimStripeSession } from './services/tokenApi';
 import { registerOrUpdateGoogleUser, addAdminPurchase, getRegisteredUsers } from './data/adminStore';
 
 export default function App() {
@@ -50,6 +51,11 @@ export default function App() {
 
   // Sync state when Admin panel updates tokens
   const refreshAppStateFromStore = () => {
+    // Google members: the balance lives on the server, so re-read the Firestore profile
+    if (user?.provider === 'firebase' && auth.currentUser) {
+      applyFirestoreProfile(auth.currentUser, { register: false });
+      return;
+    }
     if (user) {
       const allUsers = getRegisteredUsers();
       const match = allUsers.find(u => u.email?.toLowerCase() === user.email?.toLowerCase());
@@ -59,15 +65,12 @@ export default function App() {
     }
   };
 
-  // True once the signed-in user's FitToken balance has been loaded from Firestore
-  const [remoteProfileReady, setRemoteProfileReady] = useState(false);
-
   // Load (or create, as supporter) the user's Firestore profile and apply its role and tokens.
   // Returns the session user, or null when the user is not a #pt member and `register` is false.
   const applyFirestoreProfile = async (fbUser, { register = true } = {}) => {
     try {
       const localMatch = getRegisteredUsers().find(u => u.email?.toLowerCase() === fbUser.email?.toLowerCase());
-      const profile = await syncUserProfile(fbUser, { fallbackTokens: localMatch?.tokens ?? 0, register });
+      const profile = await syncUserProfile(fbUser, { register });
       if (!profile) return null;
 
       const stored = getStoredUser();
@@ -86,7 +89,6 @@ export default function App() {
       setUser(sessionUser);
       setStoredUser(sessionUser);
       setTokens(sessionUser.tokens);
-      setRemoteProfileReady(true);
       return sessionUser;
     } catch (e) {
       console.error('Failed to sync user profile with Firestore:', e);
@@ -102,7 +104,6 @@ export default function App() {
         // New users finish registration in the AuthModal flow instead.
         applyFirestoreProfile(fbUser, { register: false });
       } else {
-        setRemoteProfileReady(false);
         if (getStoredUser()?.provider === 'firebase') {
           // Firebase session ended (signed out or expired): drop the stored Google session.
           // Backup-password sessions have no Firebase session and are left alone.
@@ -115,11 +116,8 @@ export default function App() {
     return unsubscribe;
   }, []);
 
-  // Save the signed-in user's FitToken balance to Firestore whenever it changes
-  useEffect(() => {
-    if (!remoteProfileReady || user?.provider !== 'firebase' || !auth.currentUser) return;
-    saveOwnTokens(auth.currentUser.uid, tokens).catch(e => console.error('Failed to save FitTokens:', e));
-  }, [tokens, remoteProfileReady]);
+  // Stripe session already sent to the server for crediting (effects can run more than once)
+  const claimedSessionRef = useRef(null);
 
   // Process Stripe Checkout redirect callbacks (?session_id=...&stripe_success=true)
   useEffect(() => {
@@ -127,7 +125,6 @@ export default function App() {
     const stripeSuccess = params.get('stripe_success');
     const sessionId = params.get('session_id');
     const pkgId = params.get('package');
-    const urlTokens = parseInt(params.get('tokens'), 10);
 
     if (stripeSuccess === 'true' || sessionId) {
       if (pkgId === 'monthly-pass') {
@@ -141,20 +138,27 @@ export default function App() {
           tokensOrCost: '$99.00 USD/mo'
         });
         showToast('🎉 Stripe Subscription Confirmed! Monthly All-Access Pass is now active.');
+      } else if (sessionId) {
+        // The server checks the payment with Stripe and credits it once; wait until signed in
+        if (!auth.currentUser) return;
+        if (claimedSessionRef.current === sessionId) return;
+        claimedSessionRef.current = sessionId;
+        claimStripeSession(sessionId)
+          .then(({ balance, tokens: added }) => {
+            setTokens(balance);
+            addAdminPurchase({
+              clientName: user?.name || 'Stripe Customer',
+              clientEmail: user?.email || 'customer@stripe.com',
+              itemName: `FitToken Recharge (+${added} Tokens via Stripe)`,
+              category: 'Stripe Payment',
+              tokensOrCost: `${added} USD (+${added} Tokens)`
+            });
+            showToast(`💳 Stripe Checkout Confirmed! Recharged ${added} FitTokens to your balance.`);
+          })
+          .catch(err => showToast(err.status === 409 ? 'This Stripe payment has already been added to your balance.' : err.message));
       } else {
-        const toAdd = !isNaN(urlTokens) && urlTokens > 0 
-          ? urlTokens 
-          : (pkgId === 'recharge-100' ? 100 : (pkgId === 'recharge-300' ? 300 : (pkgId === 'recharge-600' ? 600 : 100)));
-        
-        setTokens(prev => prev + toAdd);
-        addAdminPurchase({
-          clientName: user?.name || 'Stripe Customer',
-          clientEmail: user?.email || 'customer@stripe.com',
-          itemName: `FitToken Recharge (+${toAdd} Tokens via Stripe)`,
-          category: 'Stripe Payment',
-          tokensOrCost: `$${toAdd} USD (+${toAdd} Tokens)`
-        });
-        showToast(`💳 Stripe Checkout Confirmed! Recharged ${toAdd} FitTokens to your balance.`);
+        // Payment Links don't return a session ID, so the server can't verify the payment here
+        showToast('Payment received. Your FitTokens will be added once the payment is confirmed. Contact support if they do not appear.');
       }
 
       // Clean up URL parameters without refreshing
@@ -251,8 +255,19 @@ export default function App() {
     setCurrentView('admin');
   };
 
-  const handleAddTokens = (amount) => {
-    setTokens(prev => prev + amount);
+  // SuperAdmin sandbox credit: added on the server, to the SuperAdmin's own balance
+  const handleAddTokens = async (amount) => {
+    if (!auth.currentUser) {
+      showToast('Sign in with Google to use FitTokens.');
+      return;
+    }
+    try {
+      const { balance } = await grantTokens(auth.currentUser.uid, amount);
+      setTokens(balance);
+    } catch (err) {
+      showToast(err.message);
+      return false;
+    }
     // Log to Admin store purchases (1 token = USD $1)
     addAdminPurchase({
       clientName: user?.name || 'Registered User',
@@ -262,9 +277,10 @@ export default function App() {
       tokensOrCost: `$${amount} USD (+${amount} Tokens)`
     });
     showToast(`Added ${amount} FitTokens to your balance!`);
+    return true;
   };
 
-  const handleSubscribeWithTokens = () => {
+  const handleSubscribeWithTokens = async () => {
     if (tokens < 99) {
       showToast(`You have ${tokens} tokens. 99 tokens needed for Monthly All-Access Pass.`);
       setAdminTab('tokens');
@@ -272,7 +288,13 @@ export default function App() {
       return false;
     }
 
-    setTokens(prev => prev - 99);
+    try {
+      const { balance } = await spendTokens('monthly-pass');
+      setTokens(balance);
+    } catch (err) {
+      showToast(err.message);
+      return false;
+    }
     setIsSubscriber(true);
     localStorage.setItem('trainer_david_subscriber', 'true');
     addAdminPurchase({
@@ -288,7 +310,7 @@ export default function App() {
 
   // Video watching logic:
   // Active Subscribers watch freely. Otherwise 1 token required.
-  const handleWatchVideo = (video) => {
+  const handleWatchVideo = async (video) => {
     // 1. Must be signed in
     if (!user) {
       showToast("Sign in with Google required. You must have tokens in order to watch videos.");
@@ -316,11 +338,18 @@ export default function App() {
       return;
     }
 
-    // Deduct 1 token and unlock
-    setTokens(prev => prev - 1);
+    // Deduct 1 token on the server, then unlock
+    let remaining;
+    try {
+      ({ balance: remaining } = await spendTokens('video', video.id));
+    } catch (err) {
+      showToast(err.message);
+      return;
+    }
+    setTokens(remaining);
     setUnlockedVideoIds(prev => [...prev, video.id]);
     setActiveVideo(video);
-    showToast(`1 Token deducted. "${video.title}" unlocked! Remaining: ${tokens - 1} Tokens.`);
+    showToast(`1 Token deducted. "${video.title}" unlocked! Remaining: ${remaining} Tokens.`);
   };
 
   const scrollToWorkouts = () => {
