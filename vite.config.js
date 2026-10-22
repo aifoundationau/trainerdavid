@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { defineConfig, loadEnv } from 'vite';
 
 function stripeDevServerPlugin(stripeSecretKey) {
@@ -158,8 +160,51 @@ function stripeDevServerPlugin(stripeSecretKey) {
   };
 }
 
+// Dev only: serve the Vercel functions in api/ (e.g. /api/drive/start-upload) from `npm run dev`,
+// so the app works locally without `vercel dev`. Routes handled above take precedence.
+function vercelFunctionsDevPlugin() {
+  return {
+    name: 'vercel-functions-dev',
+    configureServer(server) {
+      server.middlewares.use(async (req, res, next) => {
+        const { pathname } = new URL(req.url, 'http://localhost');
+        if (!pathname.startsWith('/api/') || pathname.includes('..') || pathname.startsWith('/api/_lib/')) return next();
+
+        const file = path.join(process.cwd(), `${pathname}.js`);
+        if (!fs.existsSync(file)) return next();
+
+        // Mimic Vercel's request/response helpers used by the handlers
+        res.status = (code) => { res.statusCode = code; return res; };
+        res.json = (data) => {
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify(data));
+        };
+        if ((req.headers['content-type'] || '').includes('application/json')) {
+          let raw = '';
+          for await (const chunk of req) raw += chunk;
+          try {
+            req.body = raw ? JSON.parse(raw) : {};
+          } catch {
+            return res.status(400).json({ error: 'Invalid JSON' });
+          }
+        }
+
+        try {
+          const mod = await server.ssrLoadModule(file);
+          await mod.default(req, res);
+        } catch (err) {
+          console.error(`[api] ${pathname}`, err);
+          if (!res.headersSent) res.status(500).json({ error: err.message });
+        }
+      });
+    }
+  };
+}
+
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
+  // Give the api/ functions their server-side env vars (as Vercel does), without overriding real ones
+  for (const [key, value] of Object.entries(env)) process.env[key] ??= value;
   const stripeSecretKey = env.STRIPE_SECRET_KEY || process.env.STRIPE_SECRET_KEY || '';
   process.env.GEMINI_API_KEY = env.GEMINI_API_KEY || process.env.GEMINI_API_KEY || '';
 
@@ -172,7 +217,8 @@ export default defineConfig(({ mode }) => {
       open: false
     },
     plugins: [
-      stripeDevServerPlugin(stripeSecretKey)
+      stripeDevServerPlugin(stripeSecretKey),
+      vercelFunctionsDevPlugin()
     ]
   };
 });

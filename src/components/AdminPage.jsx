@@ -44,6 +44,7 @@ import { grantTokens } from '../services/tokenApi';
 import { auth } from '../firebase';
 import { tokenPackages } from '../data/services';
 import { startStripeCheckout } from '../utils/stripeCheckout';
+import AdminUploadPanel from './AdminUploadPanel';
 
 export default function AdminPage({ 
   user, 
@@ -57,6 +58,8 @@ export default function AdminPage({
   const isSuperAdmin = isUserSuperAdmin(user?.email);
   const userRole = user?.role || (isSuperAdmin ? 'superadmin' : (isUserAdmin(user?.email) ? 'admin' : 'supporter'));
   const isAdmin = isSuperAdmin || userRole !== 'supporter';
+  // Keep in sync with UPLOAD_ROLES in api/drive/start-upload.js
+  const canUpload = isSuperAdmin || ['admin', 'trainer'].includes(userRole);
   const [activeTab, setActiveTab] = useState(isSuperAdmin ? 'users' : initialTab);
   const [users, setUsers] = useState([]);
   const [purchases, setPurchases] = useState([]);
@@ -443,11 +446,13 @@ export default function AdminPage({
             {(isSuperAdmin ? [
               { id: 'users', label: '🔥 SuperAdmin', highlight: true },
               { id: 'tokens', label: '💎 Token Funds' },
-              { id: 'purchases', label: `🛒 Purchases & Ledger (${purchases.length})` }
+              { id: 'purchases', label: `🛒 Purchases & Ledger (${purchases.length})` },
+              { id: 'upload', label: '📤 Upload' }
             ] : isAdmin ? [
               { id: 'tokens', label: '💎 Token Funds', highlight: true },
               { id: 'users', label: `👥 User Directory (${users.length})` },
-              { id: 'purchases', label: `🛒 Purchases & Ledger (${purchases.length})` }
+              { id: 'purchases', label: `🛒 Purchases & Ledger (${purchases.length})` },
+              ...(canUpload ? [{ id: 'upload', label: '📤 Upload' }] : [])
             ] : [
               { id: 'tokens', label: '💎 Token Funds', highlight: true },
               { id: 'purchases', label: `🛒 My Purchases & Ledger (${purchases.filter(p => p.clientEmail?.toLowerCase() === user?.email?.toLowerCase()).length})` }
@@ -1506,6 +1511,10 @@ export default function AdminPage({
                 </table>
               </div>
             </div>
+          )}
+
+          {activeTab === 'upload' && canUpload && (
+            <AdminUploadPanel showToast={showToast} defaultEmail={auth.currentUser?.email || user?.email || ''} />
           )}
 
         </div>
