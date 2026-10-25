@@ -4,6 +4,26 @@
   "outputDirectory": "dist",
   "rewrites": [
     {
+      "source": "/api/tokens",
+      "destination": "/api/token-api"
+    },
+    {
+      "source": "/api/tokens/:path*",
+      "destination": "/api/token-api"
+    },
+    {
+      "source": "/api/profile/sync",
+      "destination": "/api/token-api"
+    },
+    {
+      "source": "/api/exchange-rates/usd-aud",
+      "destination": "/api/token-api"
+    },
+    {
+      "source": "/api/firebase/config",
+      "destination": "/api/token-api"
+    },
+    {
       "source": "/((?!api/|@)[^.]*)",
       "destination": "/index.html"
     }

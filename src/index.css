@@ -334,13 +334,15 @@ button {
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.85);
-  backdrop-filter: blur(12px);
-  z-index: 1000;
+  background: rgba(0, 0, 0, 0.88);
+  backdrop-filter: blur(14px);
+  z-index: 10000;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 1.5rem;
+  overflow-y: auto;
+  box-sizing: border-box;
   animation: fadeIn 0.25s ease-out;
 }
 
@@ -362,14 +364,16 @@ button {
   max-width: 900px;
   width: 100%;
   max-height: 90vh;
+  margin: auto;
   overflow-y: auto;
-  box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.9);
+  box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.95);
   position: relative;
 }
 
 .video-player-container {
   width: 100%;
   aspect-ratio: 16 / 9;
+  flex-shrink: 0; /* inside the column-flex modal, don't squash the player to fit 90vh */
   background: #000;
   border-top-left-radius: var(--radius-lg);
   border-top-right-radius: var(--radius-lg);

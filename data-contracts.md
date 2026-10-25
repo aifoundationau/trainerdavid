@@ -31,15 +31,29 @@ This document establishes the single source of truth and immutable data contract
 
 ---
 
-### Entity B: Token Ledger & Wallets (`Token Store`)
-*Triggered via Token Store Modal and In-App Redemption.*
+### Entity B: Universal Token System & Ledger (`tokens`)
+*Governed by Universal Token Architecture (PROCESS 001 - 250) across all AI Foundation applications (`pt`, `aifoundation`, `gcoursebuilder`, `lms`, `rto-ai`).*
 
-| Field Name | Type | Channel | Classification | Validation Rules & Invariants | Target Storage & Retention |
-|---|---|---|---|---|---|
-| `user_id` | `uuid` | Session / JWT | Internal | UUIDv4 format. Required. | `token_ledger.user_id` (FK to `users.id`) |
-| `token_balance` | `integer` | System Engine | Internal | Min: 0 (non-negative invariant), Max: 100,000. Mutated only via atomic DB transaction with row locking. | `user_wallets.balance` (INTEGER NOT NULL DEFAULT 15) |
-| `package_id` | `enum` | UI | Internal | Values: `['starter', 'pro', 'elite']`. | `token_orders.package_id` (VARCHAR 30) |
-| `access_tier` | `enum` | System | Internal | Value: `'free_launch_pass'`. Grants 100% video preview access. | `users.access_tier` (VARCHAR 30) |
+#### 1. Universal Balance & Partitioning
+* **Universal Balance**: Stored strictly at `users/{uid}.token_balance` as a non-negative integer (`Math.trunc`, no decimals).
+* **Cross-Tenant Portability**: Available across all tenants/applications the member is registered for (`users/{uid}.apps`).
+* **Canonical Partition Key**: Injected into every document written by the token system:
+  `{ tag: 'pt', businessId: 'pt', businessName: 'Trainer David', source: 'pt' }`.
+
+#### 2. Immutable Double-Entry Ledger (`token_ledger`)
+* Stored in root collection `token_ledger/{entryId}` where `entryId` is a deterministic, idempotent transaction key:
+  - Purchases: `purchase_{sessionId}`
+  - Spends: `spend_pt_{reference}`
+  - Administrative Grants: `grant_{requestId}`
+* Balances and ledger entries are committed atomically in the same batch.
+* Spend floor is strictly zero (aborts with HTTP 409 `insufficient` if funds are inadequate).
+
+#### 3. SuperAdmin Pricing Authority (`system_settings/aifoundation_service_prices`)
+* Stored at Firestore path `system_settings/aifoundation_service_prices` in field `prices.tokens.perToken = { usd, aud }`.
+* Fallback baseline price: USD $1.00 per token.
+* Geolocation (`x-vercel-ip-country`): AUD pricing is served to Australian visitors (AU), USD to all other international traffic.
+* SuperAdmin pricing endpoints: `GET` and `PUT` `/api/tokens/pricing-settings` with live Frankfurter FX rate resolution.
+* Purchase boundaries: Minimum 10 tokens, increments of 10, Stripe card transaction minimum $0.50 to maximum $999,999.99.
 
 ---
 

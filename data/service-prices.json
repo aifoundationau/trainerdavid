@@ -1,0 +1,11 @@
+{
+  "prices": {
+    "tokens": {
+      "perToken": {
+        "usd": 1,
+        "aud": 1.43
+      }
+    }
+  },
+  "updatedAt": "2026-10-25T00:25:16.458Z"
+}

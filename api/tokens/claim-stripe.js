@@ -26,7 +26,10 @@ export default handler(async (req) => {
   }
 
   if (session.currency !== 'usd') throw new HttpError(400, 'Unsupported currency.');
-  const tokens = Math.floor((session.amount_total || 0) / 100);
+  const metaTokens = parseInt(session.metadata?.tokens, 10);
+  const tokens = Number.isInteger(metaTokens) && metaTokens > 0 
+    ? metaTokens 
+    : Math.floor((session.amount_total || 0) / 100);
   if (tokens <= 0) throw new HttpError(400, 'No FitTokens in that payment.');
 
   const result = await changeTokens(

@@ -10,13 +10,22 @@ export default function Navbar({
   tokens, 
   onOpenTokenStore, 
   onOpenConsultation,
-  onOpenAiChat 
+  onOpenAiChat,
+  onOpenTrainerApplication,
+  onGoHome 
 }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
   const isSuperAdmin = user ? isUserSuperAdmin(user.email) : false;
   const userRole = user?.role || (isSuperAdmin ? 'superadmin' : (isUserAdmin(user?.email) ? 'admin' : 'supporter'));
-  const isAdmin = isSuperAdmin || userRole !== 'supporter';
+  const isMainAdmin = userRole === 'mainadmin';
+  const isAdmin = isSuperAdmin || isMainAdmin || userRole !== 'supporter';
+
+  const handleLogoClick = (e) => {
+    e.preventDefault();
+    if (onGoHome) onGoHome();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   return (
     <header style={{
@@ -35,8 +44,23 @@ export default function Navbar({
         height: '72px',
         gap: '0.75rem'
       }}>
-        {/* Brand Logo */}
-        <a href="#" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexShrink: 0 }}>
+        {/* Brand Logo - Returns to home screen */}
+        <a 
+          href="#" 
+          onClick={handleLogoClick}
+          data-agent-id="navbar-brand-logo"
+          data-testid="navbar-brand-logo"
+          aria-label="Trainer David - Return to Home Screen"
+          title="Return to Home Screen"
+          style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: '0.75rem', 
+            flexShrink: 0, 
+            textDecoration: 'none', 
+            cursor: 'pointer' 
+          }}
+        >
           <div style={{
             width: '40px',
             height: '40px',
@@ -46,7 +70,8 @@ export default function Navbar({
             alignItems: 'center',
             justifyContent: 'center',
             color: '#fff',
-            boxShadow: '0 4px 15px rgba(255, 107, 0, 0.35)'
+            boxShadow: '0 4px 15px rgba(255, 107, 0, 0.35)',
+            transition: 'transform 0.2s ease, box-shadow 0.2s ease'
           }}>
             <Dumbbell size={22} strokeWidth={2.4} />
           </div>
@@ -55,7 +80,8 @@ export default function Navbar({
               fontFamily: 'var(--font-heading)',
               fontSize: '1.2rem',
               fontWeight: 800,
-              lineHeight: 1.1
+              lineHeight: 1.1,
+              color: '#fff'
             }}>
               TRAINER <span style={{ color: 'var(--accent-orange)' }}>DAVID</span>
             </div>
@@ -151,23 +177,29 @@ export default function Navbar({
                   <img 
                     src={user.picture} 
                     alt={user.name} 
+                    referrerPolicy="no-referrer"
+                    crossOrigin="anonymous"
                     style={{ width: '28px', height: '28px', borderRadius: '50%', objectFit: 'cover' }}
+                    onError={(e) => {
+                      e.currentTarget.style.display = 'none';
+                      const fallback = e.currentTarget.nextElementSibling;
+                      if (fallback) fallback.style.display = 'flex';
+                    }}
                   />
-                ) : (
-                  <div style={{
-                    width: '28px',
-                    height: '28px',
-                    borderRadius: '50%',
-                    background: 'var(--accent-orange)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: '0.8rem',
-                    fontWeight: 800
-                  }}>
-                    {user.name ? user.name.charAt(0).toUpperCase() : 'U'}
-                  </div>
-                )}
+                ) : null}
+                <div style={{
+                  width: '28px',
+                  height: '28px',
+                  borderRadius: '50%',
+                  background: isSuperAdmin ? '#ef4444' : 'var(--accent-orange)',
+                  display: user.picture ? 'none' : 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '0.8rem',
+                  fontWeight: 800
+                }}>
+                  {isSuperAdmin ? '🔥' : (user.name ? user.name.charAt(0).toUpperCase() : 'U')}
+                </div>
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', textAlign: 'left', lineHeight: 1.15 }}>
                   <span style={{ fontSize: '0.82rem', fontWeight: 700, maxWidth: '100px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {user.givenName || user.name?.split(' ')[0] || 'User'}
@@ -264,6 +296,33 @@ export default function Navbar({
                     <ShieldCheck size={14} color={isSuperAdmin ? "#ff6b6b" : isAdmin ? "#ff9e40" : "var(--accent-lime)"} />
                     <span>{isSuperAdmin ? '🔥 SuperAdmin Console' : (isAdmin ? 'Admin Management Hub' : 'Supporter Portal')}</span>
                   </button>
+
+                  {/* Supporter Opt-In to Become a Trainer / Specialist */}
+                  {userRole === 'supporter' && (
+                    <button
+                      onClick={() => {
+                        if (onOpenTrainerApplication) onOpenTrainerApplication();
+                        setUserDropdownOpen(false);
+                      }}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.5rem',
+                        background: 'linear-gradient(135deg, rgba(255, 107, 0, 0.15) 0%, rgba(255, 138, 0, 0.1) 100%)',
+                        border: '1px solid rgba(255, 107, 0, 0.35)',
+                        color: '#ff9e40',
+                        padding: '0.45rem 0.75rem',
+                        borderRadius: '8px',
+                        fontSize: '0.8rem',
+                        fontWeight: 700,
+                        width: '100%',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      <span>💼</span>
+                      <span>Apply as Coach / Specialist</span>
+                    </button>
+                  )}
 
                   <button
                     onClick={() => {

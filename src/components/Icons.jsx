@@ -436,3 +436,46 @@ export function MessageSquare({ size = 20, color = "currentColor", ...props }) {
   );
 }
 
+export function RefreshCw({ size = 20, color = "currentColor", ...props }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
+      <path d="M21 3v5h-5" />
+      <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
+      <path d="M8 16H3v5" />
+    </svg>
+  );
+}
+
+export function Film({ size = 20, color = "currentColor", ...props }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <rect width="20" height="20" x="2" y="2" rx="2.18" ry="2.18" />
+      <line x1="7" x2="7" y1="2" y2="22" />
+      <line x1="17" x2="17" y1="2" y2="22" />
+      <line x1="2" x2="22" y1="12" y2="12" />
+      <line x1="2" x2="7" y1="7" y2="7" />
+      <line x1="2" x2="7" y1="17" y2="17" />
+      <line x1="17" x2="22" y1="17" y2="17" />
+      <line x1="17" x2="22" y1="7" y2="7" />
+    </svg>
+  );
+}
+
+export function ChevronDown({ size = 20, color = "currentColor", ...props }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <polyline points="6 9 12 15 18 9" />
+    </svg>
+  );
+}
+
+export function ChevronUp({ size = 20, color = "currentColor", ...props }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <polyline points="18 15 12 9 6 15" />
+    </svg>
+  );
+}
+
+

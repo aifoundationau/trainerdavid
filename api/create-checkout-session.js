@@ -1,12 +1,12 @@
 // POST /api/create-checkout-session  { packageId?, customAmount? }
 // Production version of the dev-server endpoint in vite.config.js. Prices are set here,
 // and the session is tied to the signed-in member so /api/tokens/claim-stripe can credit them.
-import { handler, requireUser, HttpError } from './_lib/firebaseAdmin.js';
+import { handler, requireUser, HttpError, db } from './_lib/firebaseAdmin.js';
 
 const PACKAGES = {
-  'recharge-100': { cents: 10000, name: 'FitToken Recharge - 100 Tokens', tokens: 100 },
-  'recharge-300': { cents: 30000, name: 'FitToken Recharge - 300 Tokens', tokens: 300 },
-  'recharge-600': { cents: 60000, name: 'FitToken Recharge - 600 Tokens', tokens: 600 },
+  'recharge-100': { name: 'FitToken Recharge - 100 Tokens', tokens: 100 },
+  'recharge-300': { name: 'FitToken Recharge - 300 Tokens', tokens: 300 },
+  'recharge-600': { name: 'FitToken Recharge - 600 Tokens', tokens: 600 },
   'monthly-pass': { cents: 9900, name: 'Monthly All-Access Pass', tokens: 0, subscription: true }
 };
 
@@ -14,11 +14,28 @@ export default handler(async (req) => {
   const user = await requireUser(req);
   const { packageId, customAmount } = req.body || {};
 
+  // Retrieve SuperAdmin-configured USD token price from Firestore
+  let pricePerToken = 1.0;
+  try {
+    const doc = await db.collection('system_settings').doc('aifoundation_service_prices').get();
+    if (doc.exists) {
+      const data = doc.data();
+      const configuredUsd = data?.prices?.tokens?.perToken?.usd;
+      if (typeof configuredUsd === 'number' && configuredUsd > 0) {
+        pricePerToken = configuredUsd;
+      }
+    }
+  } catch (err) {
+    console.warn('[Stripe] Could not fetch service prices from Firestore, using baseline $1.00:', err.message);
+  }
+
   let pkg = PACKAGES[packageId];
   if (!pkg) {
     const amt = Number(customAmount);
     if (!Number.isInteger(amt) || amt < 1 || amt > 10000) throw new HttpError(400, 'Choose between 1 and 10000 tokens.');
-    pkg = { cents: amt * 100, name: `FitToken Recharge (${amt} Tokens)`, tokens: amt };
+    pkg = { cents: Math.round(amt * pricePerToken * 100), name: `FitToken Recharge (${amt} Tokens)`, tokens: amt };
+  } else if (!pkg.subscription) {
+    pkg = { ...pkg, cents: Math.round(pkg.tokens * pricePerToken * 100) };
   }
 
   const origin = req.headers.origin || `https://${req.headers.host}`;

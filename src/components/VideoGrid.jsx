@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Play, Search, Dumbbell, Clock, Check, ChevronRight, ChevronLeft, Coins, Lock } from './Icons';
+import { Play, Search, Dumbbell, Clock, Check, ChevronRight, ChevronLeft, Coins, Lock, Sparkles } from './Icons';
 import { videoLibrary, categories } from '../data/videos';
+import { fetchCommunityVideos } from '../services/trainerApi';
 
 const PAGE_SIZE = 9; // 3 videos across x 3 rows down = 9 videos max per panel
 
@@ -9,13 +10,31 @@ export default function VideoGrid({ onSelectVideo, tokens, unlockedVideoIds = []
   const [searchQuery, setSearchQuery] = useState("");
   const [difficultyFilter, setDifficultyFilter] = useState("All");
   const [currentPage, setCurrentPage] = useState(1);
+  const [communityVideos, setCommunityVideos] = useState([]);
+
+  useEffect(() => {
+    fetchCommunityVideos()
+      .then(vids => {
+        if (Array.isArray(vids) && vids.length > 0) {
+          setCommunityVideos(vids);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const allVideos = useMemo(() => {
+    const communityIds = new Set(communityVideos.map(v => v.id));
+    const dedupedLibrary = videoLibrary.filter(v => !communityIds.has(v.id));
+    return [...communityVideos, ...dedupedLibrary];
+  }, [communityVideos]);
 
   // Filter videos
   const filteredVideos = useMemo(() => {
-    return videoLibrary.filter(video => {
+    return allVideos.filter(video => {
       const matchesCategory = selectedCategory === "All Workouts" || video.category === selectedCategory;
       const matchesSearch = 
         video.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (video.author || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
         video.shortDescription.toLowerCase().includes(searchQuery.toLowerCase()) ||
         video.muscleGroup.toLowerCase().includes(searchQuery.toLowerCase()) ||
         video.equipment.toLowerCase().includes(searchQuery.toLowerCase());
@@ -23,7 +42,7 @@ export default function VideoGrid({ onSelectVideo, tokens, unlockedVideoIds = []
 
       return matchesCategory && matchesSearch && matchesDifficulty;
     });
-  }, [selectedCategory, searchQuery, difficultyFilter]);
+  }, [allVideos, selectedCategory, searchQuery, difficultyFilter]);
 
   // Reset page when category or search changes
   useEffect(() => {
@@ -219,8 +238,9 @@ export default function VideoGrid({ onSelectVideo, tokens, unlockedVideoIds = []
           <>
             <div className="grid-cards">
               {currentVideos.map((video) => {
+                const cost = Math.max(1, Math.round(Number(video.tokenCost) || 1));
                 const isUnlocked = unlockedVideoIds.includes(video.id);
-                const hasTokens = tokens >= 1;
+                const hasTokens = tokens >= cost;
                 const canWatch = isSubscriber || isUnlocked || (user && hasTokens);
 
                 return (
@@ -233,7 +253,7 @@ export default function VideoGrid({ onSelectVideo, tokens, unlockedVideoIds = []
                     <div 
                       className="postcard-thumb-wrap"
                       onClick={() => onSelectVideo(video)}
-                      title={canWatch ? `Watch: ${video.title}` : !user ? "Sign in with Google required (1 Token)" : "1 Token required to watch"}
+                      title={canWatch ? `Watch: ${video.title}` : !user ? `Sign in with Google required (${cost} ${cost === 1 ? 'Token' : 'Tokens'})` : `${cost} ${cost === 1 ? 'Token' : 'Tokens'} required to watch`}
                     >
                       <img 
                         src={video.thumbnailUrl} 
@@ -289,15 +309,21 @@ export default function VideoGrid({ onSelectVideo, tokens, unlockedVideoIds = []
 
                     {/* Postcard Body Content */}
                     <div className="postcard-body">
-                      {/* Target Muscle Tag */}
-                      <div style={{
-                        fontSize: '0.75rem',
-                        color: 'var(--accent-lime)',
-                        fontWeight: 700,
-                        textTransform: 'uppercase',
-                        marginBottom: '0.35rem'
-                      }}>
-                        🎯 {video.muscleGroup}
+                      {/* Coach Author & Target Muscle Tag */}
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.35rem', gap: '0.5rem' }}>
+                        <div style={{
+                          fontSize: '0.74rem',
+                          color: 'var(--accent-lime)',
+                          fontWeight: 700,
+                          textTransform: 'uppercase'
+                        }}>
+                          🎯 {video.muscleGroup}
+                        </div>
+                        {video.author && (
+                          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {video.author}
+                          </div>
+                        )}
                       </div>
 
                       {/* Title */}
@@ -341,7 +367,7 @@ export default function VideoGrid({ onSelectVideo, tokens, unlockedVideoIds = []
                         {!user ? (
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', color: 'var(--text-muted)', fontSize: '0.78rem' }}>
                             <Lock size={13} color="var(--accent-orange)" />
-                            <span>1 Token • Sign In</span>
+                            <span>{cost} {cost === 1 ? 'Token' : 'Tokens'} • Sign In</span>
                           </div>
                         ) : isSubscriber ? (
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', color: 'var(--accent-lime)', fontSize: '0.75rem', fontWeight: 700 }}>
@@ -356,12 +382,12 @@ export default function VideoGrid({ onSelectVideo, tokens, unlockedVideoIds = []
                         ) : !hasTokens ? (
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', color: '#f87171', fontSize: '0.78rem', fontWeight: 600 }}>
                             <Lock size={13} color="#f87171" />
-                            <span>0 Tokens</span>
+                            <span>{cost} {cost === 1 ? 'Token' : 'Tokens'}</span>
                           </div>
                         ) : (
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', color: '#f59e0b', fontSize: '0.78rem', fontWeight: 700 }}>
                             <Coins size={14} />
-                            <span>1 Token</span>
+                            <span>{cost} {cost === 1 ? 'Token' : 'Tokens'}</span>
                           </div>
                         )}
 
@@ -384,12 +410,12 @@ export default function VideoGrid({ onSelectVideo, tokens, unlockedVideoIds = []
                           ) : !user ? (
                             <>
                               <Lock size={12} color="#ff9e40" />
-                              <span>Sign In (1 Token)</span>
+                              <span>Sign In ({cost} {cost === 1 ? 'Token' : 'Tokens'})</span>
                             </>
                           ) : !canWatch ? (
                             <>
                               <Lock size={12} color="#ff9e40" />
-                              <span>1 Token Needed</span>
+                              <span>{cost} {cost === 1 ? 'Token' : 'Tokens'} Needed</span>
                             </>
                           ) : isUnlocked ? (
                             <>
@@ -398,7 +424,7 @@ export default function VideoGrid({ onSelectVideo, tokens, unlockedVideoIds = []
                             </>
                           ) : (
                             <>
-                              <span>Watch (1 Token)</span>
+                              <span>Watch ({cost} {cost === 1 ? 'Token' : 'Tokens'})</span>
                               <Play size={12} fill="#fff" />
                             </>
                           )}

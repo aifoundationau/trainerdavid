@@ -38,24 +38,34 @@ export async function requireUser(req) {
   }
 }
 
-// Atomically change a member's FitTokens and record it in users/{uid}/pt_token_ledger.
-// `entryId` makes the change happen at most once (e.g. one credit per Stripe session).
+// Atomically change a member's universal token balance and record it in global token_ledger.
+// `entryId` makes the change happen at most once (idempotent transaction key).
 export async function changeTokens(uid, delta, entry, entryId) {
   const userRef = db.collection('users').doc(uid);
-  const ledgerRef = entryId ? userRef.collection('pt_token_ledger').doc(entryId) : userRef.collection('pt_token_ledger').doc();
+  const globalLedgerRef = entryId ? db.collection('token_ledger').doc(entryId) : db.collection('token_ledger').doc();
+  const PARTITION_KEY = { tag: 'pt', businessId: 'pt', businessName: 'Trainer David', source: 'pt' };
 
   return db.runTransaction(async (tx) => {
-    const [userSnap, ledgerSnap] = await Promise.all([tx.get(userRef), tx.get(ledgerRef)]);
+    const [userSnap, ledgerSnap] = await Promise.all([tx.get(userRef), tx.get(globalLedgerRef)]);
     if (!userSnap.exists) throw new HttpError(404, 'Member not found.');
     if (entryId && ledgerSnap.exists) throw new HttpError(409, 'This has already been applied.');
 
-    const balance = userSnap.get('fitTokens') ?? 0;
-    const next = balance + delta;
-    if (next < 0) throw new HttpError(400, `Not enough FitTokens (you have ${balance}).`);
+    const currentRaw = userSnap.get('token_balance') ?? userSnap.get('fitTokens') ?? 0;
+    const balance = Number.isFinite(currentRaw) ? Math.trunc(currentRaw) : 0;
+    const next = balance + Math.trunc(delta);
+    if (next < 0) throw new HttpError(400, `Not enough tokens (you have ${balance}).`);
 
     const now = new Date().toISOString();
-    tx.update(userRef, { fitTokens: next, updatedAt: now });
-    tx.set(ledgerRef, { ...entry, delta, balanceAfter: next, createdAt: now, at: FieldValue.serverTimestamp() });
+    tx.update(userRef, { token_balance: next, fitTokens: next, updatedAt: now });
+    tx.set(globalLedgerRef, {
+      ...PARTITION_KEY,
+      ...entry,
+      uid,
+      delta: Math.trunc(delta),
+      balanceAfter: next,
+      createdAt: now,
+      at: FieldValue.serverTimestamp()
+    });
     return { balance: next, email: userSnap.get('email') || '' };
   });
 }

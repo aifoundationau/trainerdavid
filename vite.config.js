@@ -201,6 +201,41 @@ function vercelFunctionsDevPlugin() {
   };
 }
 
+// Dev only: serve the Token API directly from `api/token-api.js`
+let cachedTokenApp = null;
+function tokenApiDevPlugin() {
+  return {
+    name: 'token-api-dev',
+    configureServer(server) {
+      server.middlewares.use(async (req, res, next) => {
+        const url = new URL(req.url, 'http://localhost:3000');
+        const pathname = url.pathname;
+        if (
+          pathname === '/api/tokens' ||
+          pathname.startsWith('/api/tokens/') ||
+          pathname === '/api/profile/sync' ||
+          pathname === '/api/exchange-rates/usd-aud' ||
+          pathname === '/api/firebase/config'
+        ) {
+          try {
+            if (!cachedTokenApp) {
+              const { pathToFileURL } = await import('node:url');
+              const tokenApiPath = path.resolve(process.cwd(), 'api/token-api.js');
+              const mod = await import(pathToFileURL(tokenApiPath).href);
+              cachedTokenApp = mod.default;
+            }
+            return cachedTokenApp(req, res, next);
+          } catch (err) {
+            console.error('[token-api-dev] error:', err);
+            return next(err);
+          }
+        }
+        next();
+      });
+    }
+  };
+}
+
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
   // Give the api/ functions their server-side env vars (as Vercel does), without overriding real ones
@@ -217,6 +252,7 @@ export default defineConfig(({ mode }) => {
       open: false
     },
     plugins: [
+      tokenApiDevPlugin(),
       stripeDevServerPlugin(stripeSecretKey),
       vercelFunctionsDevPlugin()
     ]

@@ -20,14 +20,37 @@ import { isUserSuperAdmin } from '../data/adminStore';
 
 export const APP_TAG = 'pt';
 
-const APP_ROLES = ['supporter', 'trainer', 'doctor', 'accountant', 'admin', 'superadmin'];
+const APP_ROLES = [
+  'supporter',
+  'athlete',
+  'trainer',
+  'strength_coach',
+  'nutritionist',
+  'physiotherapist',
+  'exercise_physiologist',
+  'rehab_specialist',
+  'doctor',
+  'yoga_pilates',
+  'accountant',
+  'admin',
+  'mainadmin',
+  'superadmin'
+];
 
 const CLASSIFICATIONS = {
   supporter: 'Supporter',
+  athlete: 'Athlete',
   trainer: 'Trainer',
+  strength_coach: 'Strength Coach',
+  nutritionist: 'Nutritionist',
+  physiotherapist: 'Physiotherapist',
+  exercise_physiologist: 'Exercise Physiologist',
+  rehab_specialist: 'Rehab Specialist',
   doctor: 'Doctor',
+  yoga_pilates: 'Yoga & Pilates',
   accountant: 'Accountant',
   admin: 'Admin',
+  mainadmin: 'MainAdmin',
   superadmin: 'Superadmin'
 };
 
@@ -43,6 +66,9 @@ export function toAppRole(profile, email) {
 // Convert a Firestore profile into the user shape the admin panel renders
 export function toPanelUser(profile) {
   const name = profile.displayName || profile.name || profile.email?.split('@')[0] || 'User';
+  const universalBalance = Number.isFinite(profile.token_balance)
+    ? Math.trunc(profile.token_balance)
+    : Number(profile.fitTokens ?? 0);
   return {
     id: profile.uid,
     uid: profile.uid,
@@ -51,14 +77,15 @@ export function toPanelUser(profile) {
     givenName: name.split(' ')[0],
     picture: profile.photoURL || profile.avatar || '',
     role: toAppRole(profile, profile.email),
-    tokens: profile.fitTokens ?? 0,
+    tokens: universalBalance,
+    token_balance: universalBalance,
     registeredAt: profile.ptRegisteredAt || profile.registeredAt || profile.createdAt || '',
     source: 'firestore'
   };
 }
 
 // Create (as supporter) or refresh the signed-in user's profile and tag it with #pt.
-// FitTokens are never written here: only the server functions in api/tokens/ change them.
+// Universal tokens (token_balance) are never written here: only the server functions change them.
 // With `register: false` it only refreshes existing #pt members and returns null otherwise.
 export async function syncUserProfile(fbUser, { register = true } = {}) {
   const ref = doc(db, 'users', fbUser.uid);
@@ -70,21 +97,24 @@ export async function syncUserProfile(fbUser, { register = true } = {}) {
   }
 
   if (!snap.exists()) {
+    const isSuper = isUserSuperAdmin(fbUser.email);
+    const initialRole = isSuper ? 'superadmin' : 'supporter';
     const profile = {
       uid: fbUser.uid,
       id: fbUser.uid,
       email: fbUser.email,
       displayName: fbUser.displayName || fbUser.email.split('@')[0],
       photoURL: fbUser.photoURL || '',
-      role: 'supporter',
-      status: 'supporter',
-      classification: 'Supporter',
-      isSuperAdmin: false,
+      role: initialRole,
+      status: initialRole,
+      classification: CLASSIFICATIONS[initialRole] || 'Supporter',
+      isSuperAdmin: isSuper,
       source: APP_TAG,
       tag: APP_TAG,
       businessName: 'Trainer David',
       apps: [APP_TAG],
-      fitTokens: 0,
+      token_balance: isSuper ? 9999 : 0,
+      fitTokens: isSuper ? 9999 : 0,
       authProvider: 'google',
       registeredAt: now,
       ptRegisteredAt: now,
@@ -107,14 +137,25 @@ export async function syncUserProfile(fbUser, { register = true } = {}) {
   if (!existing.ptRegisteredAt) patch.ptRegisteredAt = now;
   if (!existing.displayName && fbUser.displayName) patch.displayName = fbUser.displayName;
   if (!existing.photoURL && fbUser.photoURL) patch.photoURL = fbUser.photoURL;
+  if (isUserSuperAdmin(fbUser.email) && existing.role !== 'superadmin') {
+    patch.role = 'superadmin';
+    patch.status = 'superadmin';
+    patch.classification = 'Superadmin';
+    patch.isSuperAdmin = true;
+  }
   await updateDoc(ref, patch);
+
+  const universalBalance = Number.isFinite(existing.token_balance)
+    ? Math.trunc(existing.token_balance)
+    : Number(existing.fitTokens ?? 0);
 
   return {
     ...existing,
     ...patch,
     apps: Array.from(new Set([...(existing.apps || []), APP_TAG])),
     loginCount: (existing.loginCount || 0) + 1,
-    fitTokens: existing.fitTokens ?? 0
+    token_balance: universalBalance,
+    fitTokens: universalBalance
   };
 }
 
@@ -124,10 +165,24 @@ export async function listPtUsers() {
   return snap.docs.map(d => toPanelUser({ uid: d.id, ...d.data() }));
 }
 
-// SuperAdmin: change a member's role
-export async function setUserRole(uid, role, byEmail) {
+// SuperAdmin or MainAdmin: change a member's role
+export async function setUserRole(uid, role, byEmail, callerRole = '') {
+  const ref = doc(db, 'users', uid);
+  const snap = await getDoc(ref);
+  if (snap.exists()) {
+    const data = snap.data();
+    if (isUserSuperAdmin(data.email) && role !== 'superadmin') {
+      throw new Error('SuperAdmin role is permanent and cannot be demoted or changed.');
+    }
+    if ((data.role === 'superadmin' || data.role === 'mainadmin') && callerRole === 'mainadmin') {
+      throw new Error('MainAdmin cannot modify SuperAdmin or MainAdmin accounts.');
+    }
+  }
+  if (callerRole === 'mainadmin' && (role === 'superadmin' || role === 'mainadmin')) {
+    throw new Error('MainAdmin cannot assign SuperAdmin or MainAdmin credentials.');
+  }
   const now = new Date().toISOString();
-  await updateDoc(doc(db, 'users', uid), {
+  await updateDoc(ref, {
     role,
     status: role,
     classification: CLASSIFICATIONS[role] || 'Supporter',

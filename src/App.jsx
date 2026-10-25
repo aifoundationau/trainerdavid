@@ -11,11 +11,14 @@ import AuthModal from './components/AuthModal';
 import ConsultationModal from './components/ConsultationModal';
 import AdminPage from './components/AdminPage';
 import CoachDavidAiModal from './components/CoachDavidAiModal';
+import GeoTimeWidget from './components/GeoTimeWidget';
+import TrainerApplicationModal from './components/TrainerApplicationModal';
 import { Flame, Sparkles, X, Coins, CheckCircle2 } from './components/Icons';
 import { getStoredUser, setStoredUser, clearStoredUser } from './utils/googleAuth';
 import { auth, onAuthStateChanged, logoutUser } from './firebase';
 import { syncUserProfile, toAppRole } from './services/userDirectory';
 import { spendTokens, grantTokens, claimStripeSession } from './services/tokenApi';
+import { unlockVideoWithSplit } from './services/trainerApi';
 import { registerOrUpdateGoogleUser, addAdminPurchase, getRegisteredUsers } from './data/adminStore';
 
 export default function App() {
@@ -34,11 +37,12 @@ export default function App() {
   const [isSubscriber, setIsSubscriber] = useState(() => {
     return localStorage.getItem('trainer_david_subscriber') === 'true';
   });
-  const [unlockedVideoIds, setUnlockedVideoIds] = useState([]); // Videos unlocked for 1 token
+  const [unlockedVideoIds, setUnlockedVideoIds] = useState([]); // Videos unlocked for tokens
   const [activeVideo, setActiveVideo] = useState(null);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [isConsultationOpen, setIsConsultationOpen] = useState(false);
   const [isAiChatOpen, setIsAiChatOpen] = useState(false);
+  const [isTrainerAppModalOpen, setIsTrainerAppModalOpen] = useState(false);
   const [selectedService, setSelectedService] = useState('1-on-1 Online Personal Training');
   const [toastMessage, setToastMessage] = useState(null);
 
@@ -81,9 +85,10 @@ export default function App() {
         email: fbUser.email,
         name: profile.displayName || localMatch?.name || fbUser.email.split('@')[0],
         givenName: (profile.displayName || localMatch?.givenName || '').split(' ')[0] || 'User',
-        picture: profile.photoURL || localMatch?.picture || '',
+        picture: profile.photoURL || profile.avatar || fbUser.photoURL || localMatch?.picture || '',
         role: toAppRole(profile, fbUser.email),
-        tokens: profile.fitTokens ?? 0,
+        tokens: Number.isFinite(profile.token_balance) ? Math.trunc(profile.token_balance) : (profile.fitTokens ?? 0),
+        token_balance: Number.isFinite(profile.token_balance) ? Math.trunc(profile.token_balance) : (profile.fitTokens ?? 0),
         provider: 'firebase'
       };
       setUser(sessionUser);
@@ -268,13 +273,13 @@ export default function App() {
       showToast(err.message);
       return false;
     }
-    // Log to Admin store purchases (1 token = USD $1)
+    // Log to Admin store purchases
     addAdminPurchase({
       clientName: user?.name || 'Registered User',
       clientEmail: user?.email || 'guest@gmail.com',
       itemName: `Token Recharge (+${amount} Tokens)`,
       category: 'Token Recharge',
-      tokensOrCost: `$${amount} USD (+${amount} Tokens)`
+      tokensOrCost: `+${amount} Tokens`
     });
     showToast(`Added ${amount} FitTokens to your balance!`);
     return true;
@@ -309,7 +314,8 @@ export default function App() {
   };
 
   // Video watching logic:
-  // Active Subscribers watch freely. Otherwise 1 token required.
+  // Active Subscribers watch freely. Otherwise video's custom token rate (1 token, 5 tokens, etc.) applies.
+  // When paid, SuperAdmin receives 50% and the video's creator receives 50%.
   const handleWatchVideo = async (video) => {
     // 1. Must be signed in
     if (!user) {
@@ -330,26 +336,36 @@ export default function App() {
       return;
     }
 
-    // 4. Must have at least 1 token
-    if (tokens < 1) {
-      showToast("You have 0 tokens. Please recharge via Stripe on the Admin page or get an All-Access Pass.");
+    const cost = Math.max(1, Math.round(Number(video.tokenCost) || 1));
+
+    // 4. Must have enough tokens for this video's custom rate
+    if (tokens < cost) {
+      showToast(`You have ${tokens} token${tokens === 1 ? '' : 's'}. ${cost} token${cost === 1 ? '' : 's'} required to unlock "${video.title}".`);
       setAdminTab('tokens');
       setCurrentView('admin');
       return;
     }
 
-    // Deduct 1 token on the server, then unlock
-    let remaining;
+    // Deduct tokens on the server and trigger the 50/50 revenue split
     try {
-      ({ balance: remaining } = await spendTokens('video', video.id));
+      const unlockRes = await unlockVideoWithSplit(video.id);
+      const remaining = Number.isFinite(unlockRes.balance) ? unlockRes.balance : (tokens - cost);
+      setTokens(remaining);
+      setUnlockedVideoIds(prev => [...prev, video.id]);
+      setActiveVideo(video);
+      showToast(unlockRes.message || `Unlocked "${video.title}" for ${cost} tokens!`);
     } catch (err) {
-      showToast(err.message);
-      return;
+      // Graceful fallback to spendTokens
+      try {
+        const { balance: remaining } = await spendTokens(cost, `video_${video.id}`, `Watch: ${video.title}`);
+        setTokens(remaining);
+        setUnlockedVideoIds(prev => [...prev, video.id]);
+        setActiveVideo(video);
+        showToast(`${cost} token${cost === 1 ? '' : 's'} deducted. "${video.title}" unlocked! Remaining: ${remaining} tokens.`);
+      } catch (fallbackErr) {
+        showToast(fallbackErr.message || err.message);
+      }
     }
-    setTokens(remaining);
-    setUnlockedVideoIds(prev => [...prev, video.id]);
-    setActiveVideo(video);
-    showToast(`1 Token deducted. "${video.title}" unlocked! Remaining: ${remaining} Tokens.`);
   };
 
   const scrollToWorkouts = () => {
@@ -366,7 +382,10 @@ export default function App() {
           tokens={tokens}
           onAddTokens={handleAddTokens}
           onLogout={handleLogout}
-          onBackToPublic={() => setCurrentView('public')}
+          onBackToPublic={() => {
+            setCurrentView('public');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }}
           initialTab={adminTab}
           onRefreshAppState={refreshAppStateFromStore}
         />
@@ -404,6 +423,9 @@ export default function App() {
           onSelectVideo={handleWatchVideo}
           onOpenConsultation={handleOpenConsultation}
         />
+
+        {/* Geo, Weather & Time Settings Widget */}
+        <GeoTimeWidget />
       </div>
     );
   }
@@ -416,7 +438,7 @@ export default function App() {
       {toastMessage && (
         <div style={{
           position: 'fixed',
-          bottom: '24px',
+          bottom: '44px',
           right: '24px',
           zIndex: 1300,
           background: 'rgba(15, 20, 30, 0.95)',
@@ -449,6 +471,16 @@ export default function App() {
         onOpenTokenStore={handleOpenTokenStore}
         onOpenConsultation={() => handleOpenConsultation('1-on-1 Online Personal Training')}
         onOpenAiChat={() => setIsAiChatOpen(true)}
+        onOpenTrainerApplication={() => setIsTrainerAppModalOpen(true)}
+        onGoHome={() => {
+          setCurrentView('public');
+          setActiveVideo(null);
+          setIsAuthOpen(false);
+          setIsConsultationOpen(false);
+          setIsAiChatOpen(false);
+          setIsTrainerAppModalOpen(false);
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }}
       />
 
       {/* Main Content */}
@@ -534,6 +566,21 @@ export default function App() {
         onSelectVideo={handleWatchVideo}
         onOpenConsultation={handleOpenConsultation}
       />
+
+      {/* Trainer & Health Professional Application Modal */}
+      {isTrainerAppModalOpen && (
+        <TrainerApplicationModal
+          user={user}
+          onClose={() => setIsTrainerAppModalOpen(false)}
+          showToast={showToast}
+          onSuccess={(app) => {
+            showToast(`Application for ${app.requestedRoleLabel || app.requestedRole} submitted to Google Drive!`);
+          }}
+        />
+      )}
+
+      {/* Geo, Weather & Time Settings Widget */}
+      <GeoTimeWidget />
 
     </div>
   );

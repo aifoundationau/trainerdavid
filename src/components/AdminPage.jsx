@@ -25,7 +25,9 @@ import {
   Zap,
   Activity,
   ClipboardList,
-  StripeIcon
+  StripeIcon,
+  ChevronDown,
+  ChevronUp
 } from './Icons';
 import { 
   getRegisteredUsers, 
@@ -40,11 +42,15 @@ import {
   preauthorizeUserRole
 } from '../data/adminStore';
 import { listPtUsers, setUserRole } from '../services/userDirectory';
-import { grantTokens } from '../services/tokenApi';
-import { auth } from '../firebase';
+import { grantTokens, getTokenBalance } from '../services/tokenApi';
+import { auth, onAuthStateChanged } from '../firebase';
 import { tokenPackages } from '../data/services';
 import { startStripeCheckout } from '../utils/stripeCheckout';
 import AdminUploadPanel from './AdminUploadPanel';
+import TokensPanel from './TokensPanel';
+import AdminApplicationsPanel from './AdminApplicationsPanel';
+import VideoPublishPanel from './VideoPublishPanel';
+import RolesRubricModal from './RolesRubricModal';
 
 export default function AdminPage({ 
   user, 
@@ -57,10 +63,15 @@ export default function AdminPage({
 }) {
   const isSuperAdmin = isUserSuperAdmin(user?.email);
   const userRole = user?.role || (isSuperAdmin ? 'superadmin' : (isUserAdmin(user?.email) ? 'admin' : 'supporter'));
-  const isAdmin = isSuperAdmin || userRole !== 'supporter';
-  // Keep in sync with UPLOAD_ROLES in api/drive/start-upload.js
-  const canUpload = isSuperAdmin || ['admin', 'trainer'].includes(userRole);
-  const [activeTab, setActiveTab] = useState(isSuperAdmin ? 'users' : initialTab);
+  const isMainAdmin = userRole === 'mainadmin';
+  const isAdmin = isSuperAdmin || isMainAdmin || userRole !== 'supporter';
+  // Allowed uploaders & video creators
+  const canUpload = isSuperAdmin || isMainAdmin || [
+    'admin', 'trainer', 'strength_coach', 'physiotherapist', 
+    'nutritionist', 'doctor', 'exercise_physiologist', 'rehab_specialist', 'yoga_pilates'
+  ].includes(userRole);
+  const [activeTab, setActiveTab] = useState(isSuperAdmin ? 'users' : isMainAdmin ? 'applications' : initialTab);
+  const [uploadSubTab, setUploadSubTab] = useState('drive'); // 'drive' | 'video'
   const [users, setUsers] = useState([]);
   const [purchases, setPurchases] = useState([]);
   const [searchUser, setSearchUser] = useState('');
@@ -69,6 +80,10 @@ export default function AdminPage({
   const [purchaseSearch, setPurchaseSearch] = useState('');
   const [toast, setToast] = useState(null);
 
+  // Universal Token Price state (configured dynamically by SuperAdmin)
+  const [tokenPriceUsd, setTokenPriceUsd] = useState(1.00);
+  const [tokenPriceAud, setTokenPriceAud] = useState(1.43);
+
   // Token Purchase processing state on Admin Page
   const [processingPackId, setProcessingPackId] = useState(null);
 
@@ -76,6 +91,29 @@ export default function AdminPage({
     const localUsers = getRegisteredUsers();
     setUsers(localUsers);
     setPurchases(getAdminPurchases());
+
+    try {
+      const balanceData = await getTokenBalance();
+      if (balanceData?.priceUsd?.amount) {
+        setTokenPriceUsd(balanceData.priceUsd.amount);
+      }
+      if (balanceData?.priceAud?.amount) {
+        setTokenPriceAud(balanceData.priceAud.amount);
+      } else if (balanceData?.exchangeRate?.rate && balanceData?.priceUsd?.amount) {
+        setTokenPriceAud(Number((balanceData.priceUsd.amount * balanceData.exchangeRate.rate).toFixed(2)));
+      }
+    } catch (e) {
+      // Graceful fallback to live exchange rate
+      try {
+        const res = await fetch('https://api.frankfurter.dev/v2/rate/USD/AUD');
+        if (res.ok) {
+          const fxData = await res.json();
+          if (fxData?.rate) {
+            setTokenPriceAud(Number((tokenPriceUsd * fxData.rate).toFixed(2)));
+          }
+        }
+      } catch (_) {}
+    }
 
     // SuperAdmins and admins (the roles Firestore rules allow to read all profiles) also see
     // every Trainer David (#pt) member. Local-only entries (e.g. pre-authorized emails) follow.
@@ -102,6 +140,24 @@ export default function AdminPage({
   useEffect(() => {
     loadData();
     window.scrollTo({ top: 0, behavior: 'smooth' });
+
+    // Re-run loadData when Firebase auth state resolves upon user sign-in
+    const unsubAuth = onAuthStateChanged(auth, (fbUser) => {
+      if (fbUser) {
+        loadData();
+      }
+    });
+
+    const handlePriceChange = (e) => {
+      if (e.detail?.usd) setTokenPriceUsd(e.detail.usd);
+      if (e.detail?.aud) setTokenPriceAud(e.detail.aud);
+      else if (e.detail?.usd) setTokenPriceAud(Number((e.detail.usd * 1.43).toFixed(2)));
+    };
+    window.addEventListener('tokenPriceChanged', handlePriceChange);
+    return () => {
+      unsubAuth();
+      window.removeEventListener('tokenPriceChanged', handlePriceChange);
+    };
   }, []);
 
   const showToast = (msg) => {
@@ -109,7 +165,7 @@ export default function AdminPage({
     setTimeout(() => setToast(null), 3500);
   };
 
-  // FitToken Recharge State (amounts: 100, 300, 600, or custom, 1 token = USD $1)
+  // FitToken Recharge State (dynamic pricing set by SuperAdmin)
   const [customAmount, setCustomAmount] = useState(100);
   const [isRedirectingStripe, setIsRedirectingStripe] = useState(null);
 
@@ -152,20 +208,21 @@ export default function AdminPage({
         return;
       }
 
-      // Register purchase in Admin Store (1 token = USD $1.00)
+      const totalCostUsd = (num * tokenPriceUsd).toFixed(2);
+      // Register purchase in Admin Store (using SuperAdmin configured token price)
       addAdminPurchase({
         clientName: user?.name || 'Admin / Client',
         clientEmail: user?.email || 'admin@gmail.com',
         itemName: `FitToken Recharge (${num} Tokens)`,
         category: 'Token Recharge',
-        tokensOrCost: `$${num} USD (${num} Tokens)`
+        tokensOrCost: `$${totalCostUsd} USD (${num} Tokens)`
       });
 
       loadData();
       if (onRefreshAppState) onRefreshAppState();
 
       setProcessingPackId(null);
-      showToast(`Successfully recharged ${num} FitTokens ($${num} USD) to your account!`);
+      showToast(`Successfully recharged ${num} FitTokens ($${totalCostUsd} USD) to your account!`);
     }, 500);
   };
 
@@ -199,31 +256,39 @@ export default function AdminPage({
     }
   };
 
-  // SuperAdmin Function: Grant Admin Credentials to Registered Users
+  // SuperAdmin & MainAdmin Function: Grant Credentials to Registered Users
   const handleRoleChange = async (userId, newRole, userName) => {
-    if (!isSuperAdmin) {
-      showToast("Access Denied: Only the Firebase SuperAdmin can assign credentials.");
+    if (!isSuperAdmin && !isMainAdmin) {
+      showToast("Access Denied: Only SuperAdmin or MainAdmin can assign credentials.");
+      return;
+    }
+    if (isMainAdmin && (newRole === 'superadmin' || newRole === 'mainadmin')) {
+      showToast("Access Denied: MainAdmin cannot assign SuperAdmin or MainAdmin credentials.");
       return;
     }
     const target = users.find(u => u.id === userId);
+    if (isMainAdmin && (target?.role === 'superadmin' || target?.role === 'mainadmin')) {
+      showToast("Access Denied: MainAdmin cannot modify SuperAdmin or MainAdmin accounts.");
+      return;
+    }
     if (target?.source === 'firestore') {
       try {
-        await setUserRole(target.uid, newRole, user?.email);
+        await setUserRole(target.uid, newRole, user?.email, userRole);
       } catch (e) {
         console.error('Failed to update role in Firestore:', e);
-        showToast('Failed to update user credential in the database.');
+        showToast(e.message || 'Failed to update user credential in the database.');
         return;
       }
       loadData();
       if (onRefreshAppState) onRefreshAppState();
-      showToast(`SuperAdmin granted ${newRole.toUpperCase()} credentials to ${userName}!`);
+      showToast(`Granted ${newRole.toUpperCase()} credentials to ${userName}!`);
       return;
     }
     const res = updateUserRole(userId, newRole);
     if (res.success) {
       loadData();
       if (onRefreshAppState) onRefreshAppState();
-      showToast(`SuperAdmin granted ${newRole.toUpperCase()} credentials to ${userName}!`);
+      showToast(`Granted ${newRole.toUpperCase()} credentials to ${userName}!`);
     } else {
       showToast(res.error || "Failed to update user credential.");
     }
@@ -235,6 +300,8 @@ export default function AdminPage({
   const [newAuthRole, setNewAuthRole] = useState('trainer');
   const [newAuthTokens, setNewAuthTokens] = useState(50);
   const [showPreAuthForm, setShowPreAuthForm] = useState(false);
+  const [isPermissionsCardCollapsed, setIsPermissionsCardCollapsed] = useState(false);
+  const [showRubricModal, setShowRubricModal] = useState(false);
 
   const handlePreauthorizeSubmit = (e) => {
     e.preventDefault();
@@ -302,8 +369,38 @@ export default function AdminPage({
           gap: '1rem',
           flexWrap: 'wrap'
         }}>
-          {/* Logo & Portal Badge */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
+          {/* Logo & Portal Badge - Clickable to return to Home Screen */}
+          <div 
+            onClick={onBackToPublic}
+            role="button"
+            tabIndex={0}
+            data-agent-id="admin-brand-logo-btn"
+            data-testid="admin-brand-logo-btn"
+            aria-label="Trainer David - Return to Home Screen"
+            title="Return to Home Screen"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                onBackToPublic();
+              }
+            }}
+            style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '0.85rem',
+              cursor: 'pointer',
+              userSelect: 'none',
+              padding: '0.35rem 0.6rem',
+              borderRadius: '12px',
+              transition: 'background 0.2s ease, transform 0.2s ease'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'transparent';
+            }}
+          >
             <div style={{
               width: '42px',
               height: '42px',
@@ -313,12 +410,13 @@ export default function AdminPage({
               alignItems: 'center',
               justifyContent: 'center',
               color: '#fff',
-              boxShadow: '0 4px 15px rgba(255, 107, 0, 0.35)'
+              boxShadow: '0 4px 15px rgba(255, 107, 0, 0.35)',
+              flexShrink: 0
             }}>
               <Dumbbell size={22} strokeWidth={2.4} />
             </div>
             <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
                 <span style={{ fontFamily: 'var(--font-heading)', fontSize: '1.25rem', fontWeight: 800 }}>
                   TRAINER <span style={{ color: 'var(--accent-orange)' }}>DAVID</span>
                 </span>
@@ -365,22 +463,32 @@ export default function AdminPage({
                 borderRadius: 'var(--radius-full)'
               }}>
                 {user.picture ? (
-                  <img src={user.picture} alt="" style={{ width: '26px', height: '26px', borderRadius: '50%' }} />
-                ) : (
-                  <div style={{
-                    width: '26px',
-                    height: '26px',
-                    borderRadius: '50%',
-                    background: isSuperAdmin ? '#ef4444' : 'var(--accent-orange)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: '0.75rem',
-                    fontWeight: 800
-                  }}>
-                    {isSuperAdmin ? '🔥' : (user.name ? user.name.charAt(0) : 'U')}
-                  </div>
-                )}
+                  <img 
+                    src={user.picture} 
+                    alt="" 
+                    referrerPolicy="no-referrer"
+                    crossOrigin="anonymous"
+                    style={{ width: '26px', height: '26px', borderRadius: '50%' }}
+                    onError={(e) => {
+                      e.currentTarget.style.display = 'none';
+                      const fallback = e.currentTarget.nextElementSibling;
+                      if (fallback) fallback.style.display = 'flex';
+                    }}
+                  />
+                ) : null}
+                <div style={{
+                  width: '26px',
+                  height: '26px',
+                  borderRadius: '50%',
+                  background: isSuperAdmin ? '#ef4444' : 'var(--accent-orange)',
+                  display: user.picture ? 'none' : 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '0.75rem',
+                  fontWeight: 800
+                }}>
+                  {isSuperAdmin ? '🔥' : (user.name ? user.name.charAt(0) : 'U')}
+                </div>
                 <div style={{ display: 'flex', flexDirection: 'column' }}>
                   <span style={{ fontSize: '0.8rem', fontWeight: 700, maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {user.name}
@@ -445,14 +553,21 @@ export default function AdminPage({
           }}>
             {(isSuperAdmin ? [
               { id: 'users', label: '🔥 SuperAdmin', highlight: true },
+              { id: 'applications', label: '📋 Applications' },
+              { id: 'tokens', label: '💎 Universal Tokens' },
+              { id: 'purchases', label: `🛒 Purchases & Ledger (${purchases.length})` },
+              { id: 'upload', label: '📤 Upload & Videos' }
+            ] : isMainAdmin ? [
+              { id: 'applications', label: '📋 Applications', highlight: true },
+              { id: 'users', label: `👥 User Directory (${users.length})` },
               { id: 'tokens', label: '💎 Token Funds' },
               { id: 'purchases', label: `🛒 Purchases & Ledger (${purchases.length})` },
-              { id: 'upload', label: '📤 Upload' }
+              { id: 'upload', label: '📤 Upload & Videos' }
             ] : isAdmin ? [
               { id: 'tokens', label: '💎 Token Funds', highlight: true },
               { id: 'users', label: `👥 User Directory (${users.length})` },
               { id: 'purchases', label: `🛒 Purchases & Ledger (${purchases.length})` },
-              ...(canUpload ? [{ id: 'upload', label: '📤 Upload' }] : [])
+              ...(canUpload ? [{ id: 'upload', label: '📤 Upload & Videos' }] : [])
             ] : [
               { id: 'tokens', label: '💎 Token Funds', highlight: true },
               { id: 'purchases', label: `🛒 My Purchases & Ledger (${purchases.filter(p => p.clientEmail?.toLowerCase() === user?.email?.toLowerCase()).length})` }
@@ -529,6 +644,11 @@ export default function AdminPage({
       <main style={{ flex: 1, padding: '2rem 0 4rem' }}>
         <div className="container">
 
+          {/* Universal Tokens Panel (keeps DOM mounted to preserve tokens-ui.js event listeners per PROCESS 127) */}
+          <div style={{ display: activeTab === 'tokens' ? 'block' : 'none', marginBottom: '2.5rem' }}>
+            <TokensPanel hidden={activeTab !== 'tokens'} />
+          </div>
+
           {/* TAB 1: ALL TOKEN FUNDS ARE ON THE ADMIN PAGE */}
           {activeTab === 'tokens' && (
             <div>
@@ -559,8 +679,8 @@ export default function AdminPage({
                   </div>
                   <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', maxWidth: '540px', margin: 0, lineHeight: 1.6 }}>
                     {isAdmin 
-                      ? "All token transactions and balances are managed on this admin page. Individual workout tutorials cost 1 token each. FitTokens are always set at 1 Token = USD $1.00." 
-                      : "Welcome to Trainer David's community! As a registered Supporter, you can recharge FitTokens below (1 Token = USD $1.00) to stream video masterclasses (1 token each) or book personalized coaching sessions."}
+                      ? `All token transactions and balances are managed on this admin page. Individual workout tutorials cost 1 token each. Universal token pricing is configured by the SuperAdmin (Current: 1 Token = USD $${tokenPriceUsd.toFixed(2)}).` 
+                      : `Welcome to Trainer David's community! As a registered Supporter, you can recharge FitTokens below to stream video masterclasses (1 token each) or book personalized coaching sessions. Universal token pricing is configured by the SuperAdmin (Current: 1 Token = USD $${tokenPriceUsd.toFixed(2)}).`}
                   </p>
                 </div>
 
@@ -589,7 +709,7 @@ export default function AdminPage({
                     fontWeight: 700
                   }}>
                     <Coins size={16} />
-                    <span>Fixed Valuation: 1 Token = USD $1</span>
+                    <span>SuperAdmin Token Price: 1 Token = USD ${tokenPriceUsd.toFixed(2)}{tokenPriceAud ? ` (≈ AUD $${tokenPriceAud.toFixed(2)})` : ''}</span>
                   </div>
                 </div>
               </div>
@@ -602,7 +722,7 @@ export default function AdminPage({
                       Recharge FitTokens
                     </h3>
                     <p style={{ fontSize: '0.86rem', color: 'var(--text-secondary)', margin: '0.25rem 0 0' }}>
-                      Recharge in amounts of 100, 300, 600, or enter a custom amount. Tokens are always set at <strong>1 token = USD $1</strong>.
+                      Recharge in amounts of 100, 300, 600, or enter a custom amount. Universal token pricing is set by the SuperAdmin (<strong>1 token = USD ${tokenPriceUsd.toFixed(2)}</strong>).
                     </p>
                   </div>
                   <span className="badge badge-lime" style={{ fontSize: '0.75rem' }}>
@@ -664,12 +784,15 @@ export default function AdminPage({
                             </div>
                           </div>
 
-                          <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.4rem', margin: '0.75rem 0' }}>
+                          <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.4rem', margin: '0.75rem 0', flexWrap: 'wrap' }}>
                             <span style={{ fontSize: '2rem', fontWeight: 900, color: '#fff' }}>
-                              ${pack.priceUsd}
+                              ${(pack.tokens * tokenPriceUsd).toFixed(2)}
                             </span>
                             <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                              USD ($1.00 / token)
+                              USD
+                            </span>
+                            <span style={{ fontSize: '0.85rem', color: '#f59e0b', fontWeight: 700 }}>
+                              (≈ AUD ${(pack.tokens * (tokenPriceAud || (tokenPriceUsd * 1.43))).toFixed(2)})
                             </span>
                           </div>
 
@@ -709,7 +832,7 @@ export default function AdminPage({
                             }}
                           >
                             <StripeIcon size={18} />
-                            <span>{isRedirectingStripe === pack.id ? "Connecting to Stripe..." : `Pay $${pack.priceUsd} with Stripe`}</span>
+                            <span>{isRedirectingStripe === pack.id ? "Connecting to Stripe..." : `Pay $${(pack.tokens * tokenPriceUsd).toFixed(2)} with Stripe`}</span>
                           </button>
 
                           {isSuperAdmin && (
@@ -801,14 +924,21 @@ export default function AdminPage({
                         marginBottom: '1rem',
                         display: 'flex',
                         alignItems: 'center',
-                        justifyContent: 'space-between'
+                        justifyContent: 'space-between',
+                        flexWrap: 'wrap',
+                        gap: '0.4rem'
                       }}>
                         <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Total Cost:</span>
-                        <strong style={{ fontSize: '1.1rem', color: 'var(--accent-lime)' }}>${customAmount || 0} USD</strong>
+                        <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.4rem' }}>
+                          <strong style={{ fontSize: '1.1rem', color: 'var(--accent-lime)' }}>${((customAmount || 0) * tokenPriceUsd).toFixed(2)} USD</strong>
+                          <span style={{ fontSize: '0.85rem', color: '#f59e0b', fontWeight: 700 }}>
+                            (≈ AUD ${((customAmount || 0) * (tokenPriceAud || (tokenPriceUsd * 1.43))).toFixed(2)})
+                          </span>
+                        </div>
                       </div>
 
                       <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.5, marginBottom: '1.25rem' }}>
-                        Tokens are fixed at 1 token = USD $1. Enter any amount of tokens to credit your balance immediately.
+                        Universal token price is set by the SuperAdmin (1 token = USD ${tokenPriceUsd.toFixed(2)}). Enter any amount of tokens to credit your balance immediately.
                       </p>
                     </div>
 
@@ -830,7 +960,7 @@ export default function AdminPage({
                         }}
                       >
                         <StripeIcon size={18} />
-                        <span>{isRedirectingStripe === 'custom' ? "Connecting to Stripe..." : `Pay $${customAmount || 0} with Stripe`}</span>
+                        <span>{isRedirectingStripe === 'custom' ? "Connecting to Stripe..." : `Pay $${((customAmount || 0) * tokenPriceUsd).toFixed(2)} with Stripe`}</span>
                       </button>
 
                       {isSuperAdmin && (
@@ -1002,6 +1132,30 @@ export default function AdminPage({
                     <div style={{ fontSize: '0.72rem', color: 'var(--accent-lime)' }}>
                       SuperAdmin Privilege: Live Real-Time Role Assignment
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('tokens')}
+                      style={{
+                        marginTop: '0.4rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '0.45rem',
+                        background: 'rgba(245, 158, 11, 0.15)',
+                        border: '1px solid rgba(245, 158, 11, 0.4)',
+                        borderRadius: '8px',
+                        color: '#f59e0b',
+                        padding: '0.45rem 0.75rem',
+                        fontSize: '0.76rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        transition: 'all 0.2s'
+                      }}
+                      title="Open Universal TokensPanel (Buy, Pricing & Accounts)"
+                    >
+                      <Coins size={14} />
+                      <span>Manage Universal Tokens & Pricing →</span>
+                    </button>
                   </div>
                 </div>
               ) : (
@@ -1017,40 +1171,173 @@ export default function AdminPage({
 
               {/* SuperAdmin Action: Grant Signup Permissions for Trainers, Doctors, etc. */}
               {isSuperAdmin && (
-                <div style={{
-                  background: 'rgba(239, 68, 68, 0.06)',
-                  border: '1px solid rgba(239, 68, 68, 0.25)',
-                  borderRadius: '12px',
-                  padding: '1.1rem',
-                  marginBottom: '1.5rem'
-                }}>
+                <div 
+                  data-agent-id="admin-signup-permissions-card"
+                  data-testid="admin-signup-permissions-card"
+                  style={{
+                    background: 'rgba(239, 68, 68, 0.06)',
+                    border: '1px solid rgba(239, 68, 68, 0.25)',
+                    borderRadius: '12px',
+                    padding: '1.1rem',
+                    marginBottom: '1.5rem',
+                    transition: 'all 0.25s ease'
+                  }}
+                >
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem' }}>
-                    <div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 800, color: '#fff', fontSize: '0.98rem' }}>
-                        <span>⚡</span>
-                        <span>Grant Sign Up Permissions (Trainers, Doctors, Accountants, Admins)</span>
-                      </div>
-                      <p style={{ margin: '0.3rem 0 0', fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
-                        Assign role credentials in advance. When the person signs up or logs in with their Google account, they automatically receive their assigned role and privileges instead of defaulting to Supporter.
-                      </p>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => setShowPreAuthForm(!showPreAuthForm)}
-                      className="btn-primary"
-                      style={{
-                        padding: '0.55rem 1rem',
-                        fontSize: '0.82rem',
-                        background: showPreAuthForm ? 'rgba(255, 255, 255, 0.1)' : 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
-                        borderColor: '#ef4444'
+                    <div 
+                      onClick={() => setIsPermissionsCardCollapsed(prev => !prev)}
+                      role="button"
+                      tabIndex={0}
+                      aria-expanded={!isPermissionsCardCollapsed}
+                      aria-label="Toggle Grant Sign Up Permissions Section"
+                      onKeyDown={(e) => { 
+                        if (e.key === 'Enter' || e.key === ' ') { 
+                          e.preventDefault(); 
+                          setIsPermissionsCardCollapsed(prev => !prev); 
+                        } 
+                      }}
+                      style={{ 
+                        display: 'flex', 
+                        alignItems: 'flex-start', 
+                        gap: '0.75rem', 
+                        cursor: 'pointer', 
+                        flex: 1, 
+                        minWidth: '260px',
+                        userSelect: 'none'
                       }}
                     >
-                      {showPreAuthForm ? 'Close Form' : '+ Grant Permissions to Email'}
-                    </button>
+                      {/* Responsive Lightning Badge directly in front of Grant Sign Up Permissions text */}
+                      <div 
+                        aria-hidden="true"
+                        style={{
+                          width: '32px',
+                          height: '32px',
+                          borderRadius: '8px',
+                          background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.25) 0%, rgba(220, 38, 38, 0.12) 100%)',
+                          border: '1px solid rgba(239, 68, 68, 0.4)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          color: '#ef4444',
+                          boxShadow: '0 0 12px rgba(239, 68, 68, 0.2)',
+                          flexShrink: 0,
+                          marginTop: '1px'
+                        }}
+                      >
+                        <Zap size={17} color="#ef4444" fill="#ef4444" />
+                      </div>
+
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem', flexWrap: 'wrap' }}>
+                          <span style={{ 
+                            fontWeight: 800, 
+                            color: '#fff', 
+                            fontSize: 'clamp(0.92rem, 1.8vw, 1.05rem)',
+                            lineHeight: 1.3,
+                            letterSpacing: '-0.01em'
+                          }}>
+                            Grant Sign Up Permissions (Trainers, Doctors, Accountants, Admins)
+                          </span>
+
+                          <span style={{
+                            fontSize: '0.68rem',
+                            fontWeight: 700,
+                            padding: '0.15rem 0.55rem',
+                            borderRadius: '999px',
+                            background: isPermissionsCardCollapsed ? 'rgba(255, 255, 255, 0.08)' : 'rgba(239, 68, 68, 0.2)',
+                            color: isPermissionsCardCollapsed ? 'var(--text-secondary)' : '#fca5a5',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.35rem',
+                            flexShrink: 0
+                          }}>
+                            {isPermissionsCardCollapsed ? 'Collapsed • Click to Expand' : 'Collapsible'}
+                            {isPermissionsCardCollapsed ? <ChevronDown size={13} /> : <ChevronUp size={13} />}
+                          </span>
+                        </div>
+
+                        {!isPermissionsCardCollapsed && (
+                          <p style={{ margin: '0.35rem 0 0', fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
+                            Assign role credentials in advance. When the person signs up or logs in with their Google account, they automatically receive their assigned role and privileges instead of defaulting to Supporter.
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+                      {/* Roles and Permissions Rubric Button - Defined by SuperAdmin only */}
+                      <button
+                        type="button"
+                        data-agent-id="admin-roles-rubric-btn"
+                        data-testid="admin-roles-rubric-btn"
+                        aria-label="Open Roles and Permissions Rubric"
+                        onClick={() => setShowRubricModal(true)}
+                        style={{
+                          padding: '0.55rem 0.95rem',
+                          fontSize: '0.82rem',
+                          fontWeight: 700,
+                          borderRadius: '8px',
+                          background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.25) 0%, rgba(139, 92, 246, 0.25) 100%)',
+                          border: '1px solid rgba(139, 92, 246, 0.5)',
+                          color: '#e0e7ff',
+                          cursor: 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '0.45rem',
+                          transition: 'all 0.2s ease',
+                          boxShadow: '0 2px 8px rgba(99, 102, 241, 0.15)'
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = 'linear-gradient(135deg, rgba(99, 102, 241, 0.4) 0%, rgba(139, 92, 246, 0.4) 100%)';
+                          e.currentTarget.style.borderColor = 'rgba(167, 139, 250, 0.8)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = 'linear-gradient(135deg, rgba(99, 102, 241, 0.25) 0%, rgba(139, 92, 246, 0.25) 100%)';
+                          e.currentTarget.style.borderColor = 'rgba(139, 92, 246, 0.5)';
+                        }}
+                      >
+                        <span>📋</span>
+                        <span>Roles & Permissions Rubric</span>
+                        <span style={{
+                          fontSize: '0.68rem',
+                          background: '#ef4444',
+                          color: '#fff',
+                          padding: '0.1rem 0.4rem',
+                          borderRadius: '4px',
+                          fontWeight: 800,
+                          letterSpacing: '0.03em'
+                        }}>
+                          SUPERADMIN
+                        </span>
+                      </button>
+
+                      <button
+                        type="button"
+                        data-agent-id="admin-grant-permissions-toggle-btn"
+                        data-testid="admin-grant-permissions-toggle-btn"
+                        aria-label="Toggle Grant Permissions to Email form"
+                        onClick={() => {
+                          if (isPermissionsCardCollapsed) {
+                            setIsPermissionsCardCollapsed(false);
+                            setShowPreAuthForm(true);
+                          } else {
+                            setShowPreAuthForm(!showPreAuthForm);
+                          }
+                        }}
+                        className="btn-primary"
+                        style={{
+                          padding: '0.55rem 1rem',
+                          fontSize: '0.82rem',
+                          background: showPreAuthForm && !isPermissionsCardCollapsed ? 'rgba(255, 255, 255, 0.1)' : 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+                          borderColor: '#ef4444'
+                        }}
+                      >
+                        {showPreAuthForm && !isPermissionsCardCollapsed ? 'Close Form' : '+ Grant Permissions to Email'}
+                      </button>
+                    </div>
                   </div>
 
-                  {showPreAuthForm && (
+                  {!isPermissionsCardCollapsed && showPreAuthForm && (
                     <form onSubmit={handlePreauthorizeSubmit} style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid rgba(239, 68, 68, 0.2)', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.75rem', alignItems: 'end' }}>
                       <div>
                         <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '0.3rem' }}>
@@ -1130,10 +1417,15 @@ export default function AdminPage({
                             padding: '0.6rem 1rem',
                             fontSize: '0.84rem',
                             background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
-                            borderColor: '#ef4444'
+                            borderColor: '#ef4444',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '0.45rem'
                           }}
                         >
-                          ⚡ Authorize Permissions
+                          <Zap size={15} color="#fff" fill="#fff" />
+                          <span>Authorize Permissions</span>
                         </button>
                       </div>
                     </form>
@@ -1260,7 +1552,7 @@ export default function AdminPage({
                               </span>
                             </td>
 
-                            {/* SuperAdmin Role Assignor */}
+                            {/* SuperAdmin & MainAdmin Role Assignor */}
                             <td style={{ padding: '0.75rem 0.5rem' }}>
                               {isUserSA ? (
                                 <span style={{
@@ -1274,7 +1566,19 @@ export default function AdminPage({
                                 }}>
                                   🔥 Master SuperAdmin
                                 </span>
-                              ) : isSuperAdmin ? (
+                              ) : (currentRole === 'mainadmin' && isMainAdmin) ? (
+                                <span style={{
+                                  fontSize: '0.75rem',
+                                  fontWeight: 800,
+                                  color: '#f59e0b',
+                                  padding: '0.25rem 0.5rem',
+                                  background: 'rgba(245, 158, 11, 0.12)',
+                                  borderRadius: '6px',
+                                  border: '1px solid rgba(245, 158, 11, 0.3)'
+                                }}>
+                                  🛡️ MainAdmin
+                                </span>
+                              ) : (isSuperAdmin || isMainAdmin) ? (
                                 <select
                                   value={currentRole}
                                   onChange={(e) => handleRoleChange(u.id, e.target.value, u.name)}
@@ -1288,17 +1592,21 @@ export default function AdminPage({
                                     fontWeight: 700,
                                     cursor: 'pointer'
                                   }}
-                                  title="Change admin credential"
+                                  title="Change credential"
                                 >
-                                  <option value="supporter">⭐ Supporter (Default Viewer)</option>
-                                  <option value="trainer">🏋️ Trainer (Fitness Coach)</option>
-                                  <option value="doctor">🩺 Doctor (Physiotherapy & Rehab)</option>
-                                  <option value="accountant">💼 Accountant (Finances & Ledger)</option>
-                                  <option value="admin">👑 Admin (Operations)</option>
+                                  {ADMIN_CREDENTIALS.filter(c => {
+                                    if (c.id === 'superadmin') return false;
+                                    if (isMainAdmin && c.id === 'mainadmin') return false;
+                                    return true;
+                                  }).map(c => (
+                                    <option key={c.id} value={c.id}>
+                                      {c.icon} {c.label} ({c.title})
+                                    </option>
+                                  ))}
                                 </select>
                               ) : (
                                 <span style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>
-                                  SuperAdmin Only
+                                  SuperAdmin & MainAdmin Only
                                 </span>
                               )}
                             </td>
@@ -1513,8 +1821,67 @@ export default function AdminPage({
             </div>
           )}
 
+          {activeTab === 'applications' && (isSuperAdmin || isMainAdmin) && (
+            <AdminApplicationsPanel
+              user={user}
+              isSuperAdmin={isSuperAdmin}
+              isMainAdmin={isMainAdmin}
+              showToast={showToast}
+              onRefreshUsers={loadData}
+            />
+          )}
+
           {activeTab === 'upload' && canUpload && (
-            <AdminUploadPanel showToast={showToast} defaultEmail={auth.currentUser?.email || user?.email || ''} />
+            <div>
+              <div style={{ display: 'flex', gap: '0.6rem', marginBottom: '1.5rem', justifyContent: 'center' }}>
+                <button
+                  type="button"
+                  onClick={() => setUploadSubTab('drive')}
+                  style={{
+                    padding: '0.55rem 1.25rem',
+                    borderRadius: '10px',
+                    fontSize: '0.88rem',
+                    fontWeight: 700,
+                    background: uploadSubTab === 'drive' ? 'var(--accent-orange)' : 'rgba(255, 255, 255, 0.05)',
+                    color: uploadSubTab === 'drive' ? '#fff' : 'var(--text-secondary)',
+                    border: uploadSubTab === 'drive' ? '1px solid var(--accent-orange)' : '1px solid var(--border-subtle)',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s'
+                  }}
+                >
+                  📁 Google Drive Documents
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setUploadSubTab('video')}
+                  style={{
+                    padding: '0.55rem 1.25rem',
+                    borderRadius: '10px',
+                    fontSize: '0.88rem',
+                    fontWeight: 700,
+                    background: uploadSubTab === 'video' ? 'var(--accent-orange)' : 'rgba(255, 255, 255, 0.05)',
+                    color: uploadSubTab === 'video' ? '#fff' : 'var(--text-secondary)',
+                    border: uploadSubTab === 'video' ? '1px solid var(--accent-orange)' : '1px solid var(--border-subtle)',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s'
+                  }}
+                >
+                  🎬 Publish Workout Masterclass (50/50 Split)
+                </button>
+              </div>
+
+              {uploadSubTab === 'drive' ? (
+                <AdminUploadPanel showToast={showToast} defaultEmail={auth.currentUser?.email || user?.email || ''} />
+              ) : (
+                <VideoPublishPanel 
+                  user={user} 
+                  showToast={showToast} 
+                  onVideoPublished={() => { 
+                    if (onRefreshAppState) onRefreshAppState(); 
+                  }} 
+                />
+              )}
+            </div>
           )}
 
         </div>
@@ -1540,6 +1907,14 @@ export default function AdminPage({
           </div>
         </div>
       </footer>
+
+      {/* SuperAdmin Defined Roles & Permissions Rubric Modal */}
+      <RolesRubricModal
+        isOpen={showRubricModal}
+        onClose={() => setShowRubricModal(false)}
+        isSuperAdmin={isSuperAdmin}
+        showToast={showToast}
+      />
 
     </div>
   );

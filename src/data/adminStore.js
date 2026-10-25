@@ -245,8 +245,13 @@ const INITIAL_PURCHASES = [
   }
 ];
 
-// Registered Firebase SuperAdmin Email
+// Registered Firebase SuperAdmin Emails
 export const FIREBASE_SUPERADMIN_EMAIL = 'support@aifoundation.net.au';
+export const FIREBASE_SUPERADMIN_EMAILS = [
+  'support@aifoundation.net.au',
+  'davidrobertson.info@gmail.com',
+  'david@aifoundation.com.au'
+];
 
 // Credentials SuperAdmin can assign across registered users
 export const ADMIN_CREDENTIALS = [
@@ -255,27 +260,90 @@ export const ADMIN_CREDENTIALS = [
     label: 'Supporter', 
     title: 'Community Supporter', 
     badgeClass: 'badge-lime', 
-    color: '#00e599', 
+    color: '#84cc16', 
     icon: '⭐', 
     desc: 'Default registered user. Token recharge, masterclass streaming & coaching booking.' 
   },
   { 
+    id: 'athlete', 
+    label: 'Athlete', 
+    title: 'Competitive Athlete', 
+    badgeClass: 'badge-cyan', 
+    color: '#06b6d4', 
+    icon: '🏅', 
+    desc: 'Athlete credential. High-performance athletic split tracking, full masterclass access & biofeedback.' 
+  },
+  { 
     id: 'trainer', 
     label: 'Trainer', 
-    title: 'Workout & Fitness Trainer', 
-    badgeClass: 'badge-orange', 
-    color: '#f59e0b', 
+    title: 'Personal Trainer & Fitness Coach', 
+    badgeClass: 'badge-yellow', 
+    color: '#eab308', 
     icon: '🏋️', 
-    desc: 'Workout instructor credential. Client form reviews, personal training delivery & progress logs.' 
+    desc: 'Certified Personal Trainer. Form audits, customized workout plans, and technique masterclasses.' 
+  },
+  { 
+    id: 'strength_coach', 
+    label: 'Strength Coach', 
+    title: 'Strength & Conditioning Specialist', 
+    badgeClass: 'badge-yellow', 
+    color: '#f59e0b', 
+    icon: '⚡', 
+    desc: 'Strength & conditioning coach. Power lifting, athletic rate of force development, and barbell programming.' 
+  },
+  { 
+    id: 'nutritionist', 
+    label: 'Nutritionist', 
+    title: 'Dietary & Macro Specialist', 
+    badgeClass: 'badge-green', 
+    color: '#10b981', 
+    icon: '🥗', 
+    desc: 'Nutrition specialist credential. Macro blueprints, caloric calculations & dietary consultations.' 
+  },
+  { 
+    id: 'physiotherapist', 
+    label: 'Physiotherapist', 
+    title: 'Physiotherapist & Mobility Specialist', 
+    badgeClass: 'badge-teal', 
+    color: '#14b8a6', 
+    icon: '🩺', 
+    desc: 'Physiotherapy credential. Musculoskeletal audits, joint mobilization & rehabilitation notes.' 
+  },
+  { 
+    id: 'exercise_physiologist', 
+    label: 'Exercise Physiologist', 
+    title: 'Accredited Exercise Physiologist', 
+    badgeClass: 'badge-teal', 
+    color: '#0d9488', 
+    icon: '🧬', 
+    desc: 'Exercise Physiologist. Clinical movement therapy for metabolic, cardiovascular, and neurological conditions.' 
+  },
+  { 
+    id: 'rehab_specialist', 
+    label: 'Rehab Specialist', 
+    title: 'Injury Rehabilitation Specialist', 
+    badgeClass: 'badge-cyan', 
+    color: '#0891b2', 
+    icon: '🩹', 
+    desc: 'Rehabilitation Specialist. Post-injury movement reintegration and neuromuscular re-education.' 
   },
   { 
     id: 'doctor', 
     label: 'Doctor', 
-    title: 'Physiotherapist & Medical Doctor', 
-    badgeClass: 'badge-cyan', 
-    color: '#06b6d4', 
-    icon: '🩺', 
-    desc: 'Medical rehab credential. Reviews posture audits, joint pain assessments & rehabilitation routines.' 
+    title: 'Sports Medicine Physician', 
+    badgeClass: 'badge-blue', 
+    color: '#3b82f6', 
+    icon: '🏥', 
+    desc: 'Medical doctor credential. Clinical injury diagnoses, medical assessments & return-to-play clearance.' 
+  },
+  { 
+    id: 'yoga_pilates', 
+    label: 'Yoga & Pilates', 
+    title: 'Yoga & Pilates Instructor', 
+    badgeClass: 'badge-purple', 
+    color: '#9333ea', 
+    icon: '🧘', 
+    desc: 'Yoga & Pilates Instructor. Spinal alignment, transverse abdominal recruitment, and restorative flows.' 
   },
   { 
     id: 'accountant', 
@@ -283,17 +351,26 @@ export const ADMIN_CREDENTIALS = [
     title: 'Financial Auditor & Accountant', 
     badgeClass: 'badge-purple', 
     color: '#a855f7', 
-    icon: '💼', 
+    icon: '📊', 
     desc: 'Financial auditor credential. Inspects token purchase ledgers, revenue transactions & invoice records.' 
   },
   { 
     id: 'admin', 
     label: 'Admin', 
     title: 'Operations Administrator', 
-    badgeClass: 'badge-pink', 
-    color: '#ec4899', 
-    icon: '👑', 
+    badgeClass: 'badge-orange', 
+    color: '#f97316', 
+    icon: '⚡', 
     desc: 'Operations administrator. Manages intake bookings, system settings & client communications.' 
+  },
+  { 
+    id: 'mainadmin', 
+    label: 'MainAdmin', 
+    title: 'Assistant SuperAdmin', 
+    badgeClass: 'badge-orange', 
+    color: '#f59e0b', 
+    icon: '🛡️', 
+    desc: 'Assistant to the SuperAdmin. Full operational authority across user directory, applications, token adjustments and content.' 
   },
   { 
     id: 'superadmin', 
@@ -302,25 +379,25 @@ export const ADMIN_CREDENTIALS = [
     badgeClass: 'badge-red', 
     color: '#ef4444', 
     icon: '🔥', 
-    desc: 'Registered Firebase Master Admin (support@aifoundation.net.au). Sole authority to assign credentials to all users.' 
+    desc: 'Registered Firebase Master Admin. Sole authority to assign SuperAdmin and MainAdmin credentials.' 
   }
 ];
 
-// Helper: Determine if email is the registered Firebase SuperAdmin
+// Helper: Determine if email is a registered Firebase SuperAdmin (support@aifoundation.net.au or Trainer David)
 export function isUserSuperAdmin(email) {
   if (!email) return false;
-  return email.trim().toLowerCase() === FIREBASE_SUPERADMIN_EMAIL.toLowerCase();
+  const clean = email.trim().toLowerCase();
+  return FIREBASE_SUPERADMIN_EMAILS.some(e => e.toLowerCase() === clean);
 }
 
-// Helper: Determine if an email or role has administrative access (SuperAdmin, Admin, Trainer, Doctor, Accountant)
+// Helper: Determine if an email or role has administrative access
 export function isUserAdmin(email) {
   if (!email) return false;
   const cleanEmail = email.trim().toLowerCase();
-  if (cleanEmail === FIREBASE_SUPERADMIN_EMAIL.toLowerCase()) return true;
-  if (cleanEmail === 'davidrobertson.info@gmail.com') return true;
+  if (isUserSuperAdmin(cleanEmail)) return true;
   const users = getRegisteredUsers();
   const match = users.find(u => u.email?.toLowerCase() === cleanEmail);
-  return match ? ['superadmin', 'admin', 'trainer', 'doctor', 'accountant'].includes(match.role) : false;
+  return match ? ['superadmin', 'mainadmin', 'admin', 'trainer', 'strength_coach', 'doctor', 'accountant', 'physiotherapist', 'nutritionist', 'exercise_physiologist', 'rehab_specialist', 'yoga_pilates'].includes(match.role) : false;
 }
 
 // Helper: Get registered users with guaranteed SuperAdmin entry and role sanitization
@@ -464,7 +541,7 @@ export function registerOrUpdateGoogleUser(googleProfile, backupPassword = '', a
         givenName: googleProfile.givenName || googleProfile.name?.split(' ')[0] || 'User',
         picture: googleProfile.picture || '',
         role: effectiveRole,
-        tokens: isSuperAdmin ? 9999 : (['trainer', 'doctor', 'accountant'].includes(effectiveRole) ? 50 : (isDavid ? 50 : 0)),
+        tokens: isSuperAdmin ? 9999 : (['mainadmin', 'admin', 'trainer', 'strength_coach', 'doctor', 'physiotherapist', 'nutritionist', 'exercise_physiologist', 'rehab_specialist', 'yoga_pilates', 'accountant'].includes(effectiveRole) ? 50 : (isDavid ? 50 : 0)),
         backupPassword: backupPassword || '',
         hasBackupPassword: Boolean(backupPassword),
         registeredAt: new Date().toISOString(),

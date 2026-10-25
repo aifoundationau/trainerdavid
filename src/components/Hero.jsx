@@ -25,7 +25,7 @@ export default function Hero({ onExploreWorkouts, onOpenTokenStore, onOpenConsul
             </span>
             <span className="badge badge-lime">
               <Coins size={13} />
-              <span>1 Token = USD $1</span>
+              <span>Universal FitTokens</span>
             </span>
           </div>
 
@@ -261,7 +261,7 @@ export default function Hero({ onExploreWorkouts, onOpenTokenStore, onOpenConsul
                 1 Token / Video
               </div>
               <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                1 Token = USD $1.00
+                Universal Ecosystem Access
               </div>
             </div>
           </div>

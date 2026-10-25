@@ -1,0 +1,611 @@
+/* Buy Tokens and Token Accounts (tokens.html / tokens-ui.js). Customized for Trainer David */
+:root {
+  --tokens-accent: #00e599;
+  --tokens-accent-soft: rgba(0, 229, 153, 0.15);
+  --tokens-text: #f8fafc;
+  --tokens-muted: #94a3b8;
+  --tokens-border: rgba(255, 255, 255, 0.12);
+  --tokens-input-border: rgba(255, 255, 255, 0.22);
+  --tokens-surface: #131b2a;
+  --tokens-bg: #0b0f17;
+}
+
+.tokens-page {
+  margin: 0;
+  background: var(--tokens-bg);
+  color: var(--tokens-text);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+.tokens-main {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 24px 16px;
+  display: grid;
+  gap: 20px;
+}
+.tokens-card {
+  background: var(--tokens-surface);
+  border: 1px solid var(--tokens-border);
+  border-radius: 12px;
+  padding: 18px;
+}
+.tokens-card h1,
+.tokens-card h2,
+.tokens-summary-title {
+  margin: 0 0 6px;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--tokens-text);
+}
+.tokens-intro {
+  margin: 0 0 16px;
+  font-size: 0.88rem;
+  line-height: 1.5;
+  color: var(--tokens-muted);
+}
+
+/* 2-Card Grid Layout (Buy Tokens & SuperAdmin Token Price Settings) */
+.tokens-boxes-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  align-items: stretch;
+  gap: 24px;
+  width: 100%;
+}
+
+/* Desktop & Laptop (>= 860px): 2 balanced cards side-by-side */
+@media (min-width: 860px) {
+  .tokens-boxes-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  /* Single column centered if SuperAdmin panel is hidden */
+  .tokens-boxes-grid:not(:has(#tokenPricingSection:not([hidden]))) {
+    grid-template-columns: minmax(0, 560px);
+    justify-content: center;
+    margin: 0 auto;
+  }
+  .tokens-boxes-grid > .tokens-card {
+    min-width: 0;
+  }
+  /* On desktop, keep boxes statically open like normal panels */
+  .tokens-collapsible summary {
+    pointer-events: none;
+    cursor: default;
+    list-style: none;
+  }
+  .tokens-collapsible summary::-webkit-details-marker {
+    display: none;
+  }
+  .tokens-chevron {
+    display: none !important;
+  }
+  .tokens-collapsible[open] .tokens-card-body,
+  .tokens-collapsible .tokens-card-body {
+    display: block !important;
+  }
+}
+
+/* Mobile & Tablet (< 1024px - Android / iPhone): Collapsible Dropdowns */
+@media (max-width: 1023px) {
+  .tokens-boxes-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .tokens-collapsible summary {
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    list-style: none;
+    user-select: none;
+    padding: 2px 0;
+  }
+  .tokens-collapsible summary::-webkit-details-marker {
+    display: none;
+  }
+  .tokens-chevron {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.25rem;
+    font-weight: bold;
+    color: var(--tokens-muted);
+    transition: transform 0.25s ease;
+  }
+  .tokens-collapsible[open] .tokens-chevron {
+    transform: rotate(180deg);
+  }
+  .tokens-card-body {
+    margin-top: 14px;
+    border-top: 1px solid var(--tokens-border);
+    padding-top: 14px;
+  }
+}
+
+#buyTokensSection,
+#tokenPricingSection,
+#tokenAccountsSection {
+  box-sizing: border-box;
+  width: 100%;
+}
+
+.tokens-balance {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding-bottom: 14px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--tokens-border);
+  font-size: 0.88rem;
+  color: var(--tokens-muted);
+}
+.tokens-balance strong {
+  font-size: 1.05rem;
+  color: var(--tokens-text);
+}
+
+/* The - and + buttons either side of the amount box */
+.tokens-picker {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+.tokens-step {
+  flex: 0 0 44px;
+  height: 44px;
+  background: #ffffff;
+  border: 1px solid var(--tokens-input-border);
+  border-radius: 10px;
+  color: var(--tokens-accent);
+  font-size: 1.3rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.tokens-step:hover:not(:disabled) {
+  background: var(--tokens-accent-soft);
+  border-color: var(--tokens-accent);
+}
+.tokens-step:focus-visible,
+.tokens-btn:focus-visible,
+.token-account-row:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(0, 102, 255, 0.25);
+}
+.tokens-step:disabled {
+  color: #94a3b8;
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.tokens-amount {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px;
+  background: #ffffff;
+  border: 1px solid var(--tokens-input-border);
+  border-radius: 10px;
+}
+.tokens-amount:focus-within {
+  border-color: var(--tokens-accent);
+  box-shadow: 0 0 0 3px rgba(0, 102, 255, 0.12);
+}
+.tokens-amount input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-family: inherit;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--tokens-text);
+  text-align: center;
+}
+.tokens-amount span {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--tokens-muted);
+}
+.tokens-hint {
+  margin: 8px 0 0;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: var(--tokens-muted);
+}
+.tokens-total {
+  margin-top: 14px;
+  font-size: 0.92rem;
+  line-height: 1.5;
+  color: #334155;
+}
+.tokens-total strong {
+  font-size: 1.2rem;
+  color: var(--tokens-text);
+}
+.tokens-rate {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--tokens-muted);
+}
+
+.tokens-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 22px;
+  background: var(--tokens-accent);
+  color: #ffffff;
+  border: none;
+  border-radius: 10px;
+  font-family: inherit;
+  font-size: 0.95rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.tokens-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.tokens-btn-wide {
+  width: 100%;
+  margin-top: 14px;
+}
+.tokens-secure {
+  margin-top: 10px;
+  font-size: 0.8rem;
+  color: #94a3b8;
+  text-align: center;
+}
+
+.tokens-status {
+  margin-top: 14px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 0.88rem;
+  font-weight: 500;
+  line-height: 1.45;
+}
+.tokens-status.is-ok {
+  background: #f0fdf4;
+  color: #166534;
+  border: 1px solid #bbf7d0;
+}
+.tokens-status.is-error {
+  background: #fef2f2;
+  color: #991b1b;
+  border: 1px solid #fecaca;
+}
+.tokens-status.is-info {
+  background: #eff6ff;
+  color: #1e40af;
+  border: 1px solid #bfdbfe;
+}
+
+/* Token Accounts (SuperAdmin): stacked vertically inside its box */
+.token-accounts-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.token-accounts-search {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  background: #ffffff;
+  border: 1px solid var(--tokens-input-border);
+  border-radius: 10px;
+  font-family: inherit;
+  font-size: 1rem;
+  color: var(--tokens-text);
+}
+.token-accounts-search:focus {
+  outline: none;
+  border-color: var(--tokens-accent);
+  box-shadow: 0 0 0 3px rgba(0, 102, 255, 0.12);
+}
+.token-accounts-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 420px;
+  margin-top: 10px;
+  overflow-y: auto;
+}
+.token-account-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  background: #ffffff;
+  border: 1px solid var(--tokens-border);
+  border-radius: 10px;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.token-account-row:hover {
+  background: var(--tokens-accent-soft);
+  border-color: #93c5fd;
+}
+.token-account-row.is-selected {
+  background: var(--tokens-accent-soft);
+  border-color: var(--tokens-accent);
+}
+.token-account-who {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.token-account-who strong,
+.token-account-who small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.token-account-who strong {
+  font-size: 0.9rem;
+  color: var(--tokens-text);
+}
+.token-account-who small {
+  font-size: 0.78rem;
+  color: var(--tokens-muted);
+}
+/* Which app the account belongs to, e.g. LMS */
+.token-account-app {
+  flex: none;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--tokens-border);
+  color: #475569;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.token-account-balance {
+  flex: none;
+  font-size: 0.9rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.token-account-balance small {
+  font-weight: 500;
+  color: var(--tokens-muted);
+}
+.token-accounts-empty {
+  margin: 8px 2px;
+  font-size: 0.88rem;
+  color: var(--tokens-muted);
+}
+.token-grant-card {
+  background: #ffffff;
+}
+
+/* SuperAdmin Token Price Settings */
+.token-pricing-admin-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin: 18px 0;
+  align-items: start;
+}
+
+@media (max-width: 580px) {
+  .token-pricing-admin-grid {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+}
+
+.token-pricing-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.token-pricing-field label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.token-pricing-field label span {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: #ffffff;
+  letter-spacing: -0.01em;
+}
+
+.token-pricing-field label small {
+  display: block;
+  font-size: 0.78rem;
+  color: var(--tokens-muted);
+  line-height: 1.35;
+}
+
+.token-pricing-input-wrap {
+  display: flex;
+  align-items: center;
+  background: rgba(13, 17, 28, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 10px;
+  padding: 2px 14px;
+  transition: all 0.2s ease;
+  min-height: 48px;
+}
+
+.token-pricing-input-wrap:focus-within {
+  border-color: #f59e0b;
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.2);
+  background: rgba(13, 17, 28, 0.98);
+}
+
+.token-pricing-input-wrap .currency-prefix {
+  font-size: 0.92rem;
+  font-weight: 800;
+  color: #f59e0b;
+  margin-right: 8px;
+  user-select: none;
+}
+
+.token-pricing-input-wrap input {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-family: inherit;
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: #ffffff !important;
+}
+
+.token-pricing-input-wrap input::placeholder {
+  color: rgba(255, 255, 255, 0.35);
+  font-weight: 500;
+}
+
+.token-pricing-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.82rem;
+  color: var(--tokens-muted);
+  margin-bottom: 20px;
+  padding: 12px 14px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+}
+
+.token-pricing-meta span:first-child {
+  color: #10b981;
+  font-weight: 600;
+}
+
+.token-pricing-meta span:last-child {
+  color: var(--tokens-muted);
+  font-size: 0.78rem;
+}
+
+.token-pricing-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
+#adminSaveTokenPriceBtn {
+  background: linear-gradient(135deg, #ff6b00 0%, #ff8800 100%);
+  color: #ffffff;
+  border: none;
+  font-weight: 700;
+  font-size: 0.84rem;
+  padding: 8px 16px;
+  height: 36px;
+  border-radius: 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  box-shadow: 0 3px 10px rgba(255, 107, 0, 0.3);
+}
+
+#adminSaveTokenPriceBtn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 5px 14px rgba(255, 107, 0, 0.45);
+}
+
+#adminResetTokenPriceBtn {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: #94a3b8;
+  font-weight: 600;
+  font-size: 0.80rem;
+  padding: 8px 13px;
+  height: 36px;
+  border-radius: 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#adminResetTokenPriceBtn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+/* Buy Tokens Single-Line Total Display */
+.tokens-total-line {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+  gap: 6px;
+  font-size: clamp(0.78rem, 0.9vw, 0.88rem);
+  line-height: 1.4;
+  color: var(--tokens-text);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+.tokens-total-line::-webkit-scrollbar {
+  display: none;
+}
+.tokens-total-line .tokens-total-amount,
+.tokens-total-line strong {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--tokens-text);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.tokens-total-line .tokens-aud-converted {
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: #059669;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.tokens-total-line .tokens-qty-label {
+  font-size: 0.86rem;
+  color: var(--tokens-muted);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.tokens-total-line .tokens-sep-dot {
+  color: #94a3b8;
+  font-weight: 700;
+  margin: 0 1px;
+  user-select: none;
+  flex-shrink: 0;
+}
+.tokens-total-line .tokens-unit-rate {
+  font-size: 0.84rem;
+  color: var(--tokens-muted);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.tokens-problem-text {
+  margin-top: 6px;
+  font-size: 0.82rem;
+  color: #ef4444;
+  line-height: 1.4;
+}
+
+[hidden] {
+  display: none !important;
+}

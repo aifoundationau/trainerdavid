@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { X, Play, CheckCircle2, ShieldCheck, Dumbbell, Sparkles, Check, Lock, Coins, Google } from './Icons';
+import { X, Play, CheckCircle2, ShieldCheck, Dumbbell, Sparkles, Check, Lock, Coins, Google, ExternalLink } from './Icons';
 
 export default function VideoModal({ 
   video, 
@@ -25,11 +25,37 @@ export default function VideoModal({
   const canPlay = isUnlocked || isSubscriber;
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <div 
+      className="modal-backdrop" 
+      onClick={onClose}
+      data-agent-id="video-modal-backdrop"
+      data-testid="video-modal-backdrop"
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 10000,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '1.25rem',
+        background: 'rgba(0, 0, 0, 0.88)',
+        backdropFilter: 'blur(14px)',
+        overflowY: 'auto'
+      }}
+    >
       <div 
         className="modal-content" 
         onClick={(e) => e.stopPropagation()}
-        style={{ maxWidth: '860px' }}
+        style={{
+          // 142vh wide keeps the 16:9 player under 80vh tall, so it always fits inside the 90vh modal
+          maxWidth: 'min(860px, 142vh)',
+          width: '100%',
+          margin: 'auto',
+          position: 'relative',
+          display: 'flex',
+          flexDirection: 'column',
+          boxShadow: '0 25px 60px -15px rgba(0, 0, 0, 0.95), 0 0 35px rgba(255, 107, 0, 0.12)'
+        }}
       >
         {/* Close Button Header */}
         <div style={{
@@ -63,15 +89,23 @@ export default function VideoModal({
         {canPlay ? (
           <div className="video-player-container">
             <iframe
-              src={`https://www.youtube.com/embed/${video.youtubeId}?autoplay=1&rel=0`}
+              src={`https://www.youtube-nocookie.com/embed/${video.youtubeId}?autoplay=1&rel=0&modestbranding=1&playsinline=1`}
               title={video.title}
+              referrerPolicy="strict-origin-when-cross-origin"
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
               allowFullScreen
+              style={{
+                width: '100%',
+                height: '100%',
+                border: 'none',
+                display: 'block'
+              }}
             />
           </div>
         ) : (
           <div style={{
             aspectRatio: '16/9',
+            flexShrink: 0,
             background: 'radial-gradient(circle at center, #151928 0%, #080a11 100%)',
             display: 'flex',
             flexDirection: 'column',
@@ -104,7 +138,7 @@ export default function VideoModal({
             <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', maxWidth: '460px', lineHeight: 1.55, marginBottom: '1.4rem' }}>
               {!user 
                 ? "You are not signed in. You must sign in with your Google Email and have tokens in order to watch the workout videos (1 token per video)."
-                : "You have 0 tokens. You must have tokens in order to watch videos. Please recharge tokens on the Admin page (1 token = USD $1)."}
+                : "You have 0 tokens. You must have tokens in order to watch videos. Please recharge tokens on the Tokens page (1 token per video)."}
             </p>
 
             {!user ? (
@@ -218,7 +252,28 @@ export default function VideoModal({
               </span>
             </div>
 
-            <div style={{ display: 'flex', gap: '0.65rem' }}>
+            <div style={{ display: 'flex', gap: '0.65rem', flexWrap: 'wrap' }}>
+              {video.youtubeId && (
+                <a 
+                  href={video.youtubeUrl || `https://www.youtube.com/watch?v=${video.youtubeId}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn-secondary"
+                  style={{
+                    padding: '0.55rem 1rem',
+                    fontSize: '0.85rem',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.4rem',
+                    textDecoration: 'none'
+                  }}
+                  title="Open video directly on YouTube in new tab"
+                >
+                  <ExternalLink size={14} />
+                  <span>YouTube ↗</span>
+                </a>
+              )}
+
               <button 
                 onClick={() => {
                   onClose();
