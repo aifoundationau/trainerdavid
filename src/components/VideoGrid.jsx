@@ -97,7 +97,7 @@ export default function VideoGrid({ onSelectVideo, tokens, unlockedVideoIds = []
             EXPLORE 31+ VIDEO WORKOUTS
           </h2>
           <p style={{ fontSize: '1rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-            Step-by-step biomechanical execution, key cues, and muscle activation. Stream any video for 1 token. Tokens are set at USD $1 per token. Recharge tokens via your Admin page to stream.
+            Step-by-step biomechanical execution, key cues, and muscle activation. Spend tokens once to own permanent lifetime access. Every video you unlock is yours to watch for life on any device.
           </p>
         </div>
 
@@ -253,7 +253,7 @@ export default function VideoGrid({ onSelectVideo, tokens, unlockedVideoIds = []
                     <div 
                       className="postcard-thumb-wrap"
                       onClick={() => onSelectVideo(video)}
-                      title={canWatch ? `Watch: ${video.title}` : !user ? `Sign in with Google required (${cost} ${cost === 1 ? 'Token' : 'Tokens'})` : `${cost} ${cost === 1 ? 'Token' : 'Tokens'} required to watch`}
+                      title={canWatch ? (isUnlocked ? `Watch for Life: ${video.title} (Lifetime Access)` : `Watch: ${video.title}`) : !user ? `Sign in with Google required (${cost} ${cost === 1 ? 'Token' : 'Tokens'} • Watch for Life)` : `${cost} ${cost === 1 ? 'Token' : 'Tokens'} to unlock for life`}
                     >
                       <img 
                         src={video.thumbnailUrl} 
@@ -375,9 +375,9 @@ export default function VideoGrid({ onSelectVideo, tokens, unlockedVideoIds = []
                             <span>Pass Active</span>
                           </div>
                         ) : isUnlocked ? (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', color: 'var(--accent-lime)', fontSize: '0.75rem', fontWeight: 700 }}>
-                            <Check size={14} />
-                            <span>Unlocked</span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', color: 'var(--accent-lime)', fontSize: '0.75rem', fontWeight: 800 }}>
+                            <Check size={14} color="var(--accent-lime)" strokeWidth={2.5} />
+                            <span>Watch for Life</span>
                           </div>
                         ) : !hasTokens ? (
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', color: '#f87171', fontSize: '0.78rem', fontWeight: 600 }}>
@@ -419,7 +419,7 @@ export default function VideoGrid({ onSelectVideo, tokens, unlockedVideoIds = []
                             </>
                           ) : isUnlocked ? (
                             <>
-                              <span>Watch Video</span>
+                              <span>Watch for Life</span>
                               <Play size={12} fill="#fff" />
                             </>
                           ) : (

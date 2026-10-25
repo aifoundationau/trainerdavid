@@ -18,7 +18,7 @@ import { getStoredUser, setStoredUser, clearStoredUser } from './utils/googleAut
 import { auth, onAuthStateChanged, logoutUser } from './firebase';
 import { syncUserProfile, toAppRole } from './services/userDirectory';
 import { spendTokens, grantTokens, claimStripeSession } from './services/tokenApi';
-import { unlockVideoWithSplit } from './services/trainerApi';
+import { unlockVideoWithSplit, fetchMyUnlockedVideos } from './services/trainerApi';
 import { registerOrUpdateGoogleUser, addAdminPurchase, getRegisteredUsers } from './data/adminStore';
 
 export default function App() {
@@ -37,7 +37,14 @@ export default function App() {
   const [isSubscriber, setIsSubscriber] = useState(() => {
     return localStorage.getItem('trainer_david_subscriber') === 'true';
   });
-  const [unlockedVideoIds, setUnlockedVideoIds] = useState([]); // Videos unlocked for tokens
+  const [unlockedVideoIds, setUnlockedVideoIds] = useState(() => {
+    try {
+      const saved = localStorage.getItem('trainer_david_unlocked_videos');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  }); // Lifetime unlocked video IDs
   const [activeVideo, setActiveVideo] = useState(null);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [isConsultationOpen, setIsConsultationOpen] = useState(false);
@@ -94,6 +101,20 @@ export default function App() {
       setUser(sessionUser);
       setStoredUser(sessionUser);
       setTokens(sessionUser.tokens);
+
+      // Load lifetime video purchases from Firestore
+      fetchMyUnlockedVideos()
+        .then(ids => {
+          if (Array.isArray(ids) && ids.length > 0) {
+            setUnlockedVideoIds(prev => {
+              const merged = Array.from(new Set([...prev, ...ids]));
+              localStorage.setItem('trainer_david_unlocked_videos', JSON.stringify(merged));
+              return merged;
+            });
+          }
+        })
+        .catch(() => {});
+
       return sessionUser;
     } catch (e) {
       console.error('Failed to sync user profile with Firestore:', e);
@@ -351,17 +372,25 @@ export default function App() {
       const unlockRes = await unlockVideoWithSplit(video.id);
       const remaining = Number.isFinite(unlockRes.balance) ? unlockRes.balance : (tokens - cost);
       setTokens(remaining);
-      setUnlockedVideoIds(prev => [...prev, video.id]);
+      setUnlockedVideoIds(prev => {
+        const next = Array.from(new Set([...prev, video.id]));
+        try { localStorage.setItem('trainer_david_unlocked_videos', JSON.stringify(next)); } catch {}
+        return next;
+      });
       setActiveVideo(video);
-      showToast(unlockRes.message || `Unlocked "${video.title}" for ${cost} tokens!`);
+      showToast(unlockRes.message || `Unlocked "${video.title}" for life! (${cost} ${cost === 1 ? 'Token' : 'Tokens'})`);
     } catch (err) {
       // Graceful fallback to spendTokens
       try {
         const { balance: remaining } = await spendTokens(cost, `video_${video.id}`, `Watch: ${video.title}`);
         setTokens(remaining);
-        setUnlockedVideoIds(prev => [...prev, video.id]);
+        setUnlockedVideoIds(prev => {
+          const next = Array.from(new Set([...prev, video.id]));
+          try { localStorage.setItem('trainer_david_unlocked_videos', JSON.stringify(next)); } catch {}
+          return next;
+        });
         setActiveVideo(video);
-        showToast(`${cost} token${cost === 1 ? '' : 's'} deducted. "${video.title}" unlocked! Remaining: ${remaining} tokens.`);
+        showToast(`Purchased for life! "${video.title}" is now permanently unlocked to your account.`);
       } catch (fallbackErr) {
         showToast(fallbackErr.message || err.message);
       }

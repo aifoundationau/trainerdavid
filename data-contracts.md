@@ -70,6 +70,43 @@ This document establishes the single source of truth and immutable data contract
 | `equipment` | `string` | Seed / CMS | Public | Gym/home equipment requirements. Length: 2–100 chars. | `videos.equipment` (VARCHAR 100) |
 | `difficulty` | `enum` | Seed / CMS | Public | Values: `['Beginner Friendly', 'Intermediate', 'Advanced Masterclass']`. | `videos.difficulty` (VARCHAR 30) |
 | `token_cost` | `integer` | Seed / CMS | Internal | Value >= 0. Default: `5` (Bypassed during Free Launch Phase). | `videos.token_cost` (INTEGER DEFAULT 5) |
+| `thumbnail_url` | `string` | CMS / YouTube | Public | Extracted YouTube thumbnail `https://i.ytimg.com/vi/[id]/hqdefault.jpg`. | `videos.thumbnail_url` (VARCHAR 255) |
+| `visibility_requirement` | `string` | CMS / Enforced | System | Enforced invariant: YouTube videos MUST be listed as `Unlisted` on YouTube Studio. | System Invariant |
+
+#### Video Metadata Extraction Contract (`POST /api/videos/extract`)
+* Strict JSON Schema (`additionalProperties: false`):
+  ```json
+  {
+    "type": "object",
+    "properties": {
+      "url": { "type": "string", "pattern": "^https?:\\/\\/(?:www\\.|m\\.)?(?:youtu\\.be\\/|youtube\\.com\\/(?:embed\\/|v\\/|watch\\?v=|watch\\?.+&v=|shorts\\/))([\\w-]{11})" }
+    },
+    "required": ["url"],
+    "additionalProperties": false
+  }
+  ```
+* Extraction Response: `{ success: true, youtubeId, title, rawTitle, description, thumbnailUrl, maxresThumbnailUrl, author, unlistedNotice }`.
+
+#### Lifetime Access Invariant & Member Unlocks (`POST /api/videos/unlock`, `POST /api/videos/my-unlocks`)
+* **Watch for Life Policy**: When a member buys/unlocks any video with FitTokens, access is permanent and non-expiring (`accessType: 'lifetime'`).
+* **Persistence & Cross-Device Sync**: Every purchase is recorded in `video_unlocks` with `accessType: 'lifetime'` and atomically appends the video ID to `users.{uid}.unlocked_videos` via `FieldValue.arrayUnion(videoId)`.
+* **Member Unlocks Endpoint (`POST /api/videos/my-unlocks`)**:
+  * Request: Authenticated via Firebase ID token (`requireUser(req)`).
+  * Strict Response Schema:
+    ```json
+    {
+      "type": "object",
+      "properties": {
+        "success": { "type": "boolean" },
+        "unlockedVideoIds": { "type": "array", "items": { "type": "string" } },
+        "accessType": { "type": "string", "enum": ["lifetime"] },
+        "totalPurchased": { "type": "integer" }
+      },
+      "required": ["success", "unlockedVideoIds", "accessType", "totalPurchased"],
+      "additionalProperties": false
+    }
+    ```
+
 
 ---
 

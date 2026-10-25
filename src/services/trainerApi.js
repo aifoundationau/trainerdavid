@@ -123,3 +123,19 @@ export async function unlockVideoWithSplit(videoId) {
     body: { videoId }
   });
 }
+
+// Extract YouTube title, description, and thumbnail
+export async function extractVideoMetadata(videoUrl) {
+  return callApi('/api/videos/extract', {
+    method: 'POST',
+    body: { url: videoUrl }
+  });
+}
+
+// Fetch all video IDs the authenticated user has unlocked for lifetime access
+export async function fetchMyUnlockedVideos() {
+  const data = await callApi('/api/videos/my-unlocks', { method: 'POST' });
+  return data.unlockedVideoIds || [];
+}
+
+

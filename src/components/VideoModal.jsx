@@ -132,13 +132,13 @@ export default function VideoModal({
             </div>
 
             <h3 style={{ fontSize: '1.35rem', fontWeight: 800, color: '#fff', marginBottom: '0.45rem' }}>
-              Token Required to Stream Masterclass
+              FitTokens Required to Unlock for Life
             </h3>
 
-            <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', maxWidth: '460px', lineHeight: 1.55, marginBottom: '1.4rem' }}>
+            <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', maxWidth: '480px', lineHeight: 1.55, marginBottom: '1.4rem' }}>
               {!user 
-                ? "You are not signed in. You must sign in with your Google Email and have tokens in order to watch the workout videos (1 token per video)."
-                : "You have 0 tokens. You must have tokens in order to watch videos. Please recharge tokens on the Tokens page (1 token per video)."}
+                ? "You are not signed in. Sign in with Google to buy and unlock this workout tutorial. Once purchased, you can watch it for life on any device."
+                : `You need ${video.tokenCost || 1} ${(video.tokenCost || 1) === 1 ? 'token' : 'tokens'} to unlock this tutorial for life. Recharge tokens via your Admin page to stream permanently.`}
             </p>
 
             {!user ? (
@@ -242,13 +242,13 @@ export default function VideoModal({
             paddingTop: '1rem',
             borderTop: '1px solid var(--border-subtle)'
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
               <span className="badge badge-lime">
-                <Check size={13} />
-                <span>Unlocked (1 Token)</span>
+                <Check size={13} strokeWidth={2.5} />
+                <span>Unlocked • Watch for Life</span>
               </span>
               <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-                Unlimited replays for this workout session
+                Permanent lifetime access • Stream anytime on any device
               </span>
             </div>
 

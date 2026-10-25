@@ -29,7 +29,9 @@ export default handler(async (req) => {
       status: 'already-unlocked',
       videoId,
       balance: Math.trunc(balance),
-      message: 'Video is already unlocked.'
+      accessType: 'lifetime',
+      lifetimeAccess: true,
+      message: 'You already own lifetime access to this video.'
     };
   }
 
@@ -84,10 +86,11 @@ export default handler(async (req) => {
     const superAdminRef = db.collection('users').doc(SUPERADMIN_UID);
     const superAdminSnap = await tx.get(superAdminRef);
 
-    // Apply viewer deduction
+    // Apply viewer deduction and record unlocked video in user profile
     tx.update(viewerRef, {
       token_balance: nextViewerBalance,
       fitTokens: nextViewerBalance,
+      unlocked_videos: FieldValue.arrayUnion(videoId),
       updatedAt: now
     });
 
@@ -166,7 +169,7 @@ export default handler(async (req) => {
       });
     }
 
-    // Record permanent unlock
+    // Record permanent lifetime unlock
     tx.set(unlockRef, {
       viewerUid: viewer.uid,
       viewerEmail: viewer.email || '',
@@ -176,6 +179,8 @@ export default handler(async (req) => {
       trainerShare,
       platformShare,
       creatorUid,
+      accessType: 'lifetime',
+      lifetimeAccess: true,
       unlockedAt: now
     });
 
@@ -186,8 +191,10 @@ export default handler(async (req) => {
       tokenCost,
       trainerShare,
       platformShare,
+      accessType: 'lifetime',
+      lifetimeAccess: true,
       balance: nextViewerBalance,
-      message: `Unlocked "${videoTitle}"! Spent ${tokenCost} tokens. (${trainerShare} to coach, ${platformShare} platform fee)`
+      message: `Unlocked "${videoTitle}" for life! Spent ${tokenCost} tokens. (${trainerShare} to coach, ${platformShare} platform fee)`
     };
   });
 });
