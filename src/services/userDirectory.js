@@ -142,6 +142,10 @@ export async function syncUserProfile(fbUser, { register = true } = {}) {
     patch.status = 'superadmin';
     patch.classification = 'Superadmin';
     patch.isSuperAdmin = true;
+  } else if (!existing.role) {
+    patch.role = 'supporter';
+    patch.status = 'supporter';
+    patch.classification = CLASSIFICATIONS.supporter || 'Supporter';
   }
   await updateDoc(ref, patch);
 

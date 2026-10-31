@@ -20,7 +20,8 @@ const firebaseConfig = {
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
-export const db = getFirestore(app);
+const databaseId = import.meta.env.VITE_FIRESTORE_DATABASE_ID || 'trainerdavid';
+export const db = getFirestore(app, databaseId);
 export const googleProvider = new GoogleAuthProvider();
 
 // Google Sign-In with popup

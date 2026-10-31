@@ -43,13 +43,50 @@
         return rounded > 0 && rounded <= MAX_AMOUNT ? rounded : NaN;
     }
 
-    // The price a visitor pays: AUD for visitors in Australia when an AUD price is set, otherwise USD.
+    // The price a visitor pays: AUD for visitors in Australia & New Zealand when an AUD price is set or converted, otherwise USD.
+    // Supports country-specific overrides: e.g. USD $1 = 10 Tokens for Cambodia, USD $1 = 5 Tokens for Thailand.
     // { currency, amount }, or null when there is no price
-    function resolvePrice(part, countryCode, { decimals = 0 } = {}) {
+    function resolvePrice(part, countryCode, { decimals = 0, countryRates = null, rate = null, toggles = null } = {}) {
+        const country = String(countryCode || '').trim().toUpperCase();
         const usd = parseAmount(part ? part.usd : null, { decimals });
         const aud = parseAmount(part ? part.aud : null, { decimals });
-        if (String(countryCode || '').toUpperCase() === 'AU' && Number.isFinite(aud)) return { currency: 'AUD', amount: aud };
-        return Number.isFinite(usd) ? { currency: 'USD', amount: usd } : null;
+        const baseUsd = Number.isFinite(usd) ? usd : DEFAULT_TOKEN_PRICE.usd;
+
+        let tokensPerUsd = 1;
+        if (country && countryRates && countryRates[country]) {
+            const entry = countryRates[country];
+            const customTokens = Number(entry.tokensPerUsd !== undefined ? entry.tokensPerUsd : entry.tokens);
+            if (Number.isFinite(customTokens) && customTokens > 0) {
+                tokensPerUsd = customTokens;
+            }
+        }
+
+        const unitUsd = Math.round((baseUsd / tokensPerUsd) * (10 ** decimals)) / (10 ** decimals);
+
+        // Australia & New Zealand geolocation: convert to AUD
+        const isAuNz = country === 'AU' || country === 'NZ';
+        const audEnabled = toggles ? (toggles.isAudEnabled !== false) : true;
+        const usdEnabled = toggles ? (toggles.isUsdEnabled !== false) : true;
+
+        if (isAuNz && audEnabled) {
+            if (Number.isFinite(aud) && tokensPerUsd === 1 && country === 'AU') {
+                return { currency: 'AUD', amount: aud };
+            }
+            if (rate || tokensPerUsd !== 1 || country === 'NZ') {
+                const fx = rate || 1.43;
+                const convertedAud = Math.round((unitUsd * fx) * (10 ** decimals)) / (10 ** decimals);
+                return { currency: 'AUD', amount: convertedAud };
+            }
+            if (Number.isFinite(aud)) return { currency: 'AUD', amount: aud };
+        }
+
+        if (!usdEnabled && audEnabled) {
+            const fx = rate || 1.43;
+            const convertedAud = Math.round((unitUsd * fx) * (10 ** decimals)) / (10 ** decimals);
+            return { currency: 'AUD', amount: convertedAud };
+        }
+
+        return Number.isFinite(unitUsd) ? { currency: 'USD', amount: unitUsd } : null;
     }
 
     // "USD $1,500" or "AUD $14.30" (cents only when the amount has them)
@@ -87,15 +124,22 @@
     // The token price in use ({ usd, aud }, with cents) from AI Foundation's saved prices (system_settings/
     // aifoundation_service_prices, field prices): the saved USD price or the default USD $1, and the AUD price when set
     function tokenPricePart(prices) {
-        const saved = (prices && prices.tokens && prices.tokens.perToken) || {};
+        const saved = (prices && prices.tokens && prices.tokens.perToken) || (prices && prices.perToken) || {};
         const usd = parseAmount(saved.usd, { decimals: TOKEN_PRICE_DECIMALS });
         const aud = parseAmount(saved.aud, { decimals: TOKEN_PRICE_DECIMALS });
         return { usd: Number.isFinite(usd) ? usd : DEFAULT_TOKEN_PRICE.usd, aud: Number.isFinite(aud) ? aud : null };
     }
 
     // The price of one token for a visitor ({ currency, amount }, with cents)
-    function tokenPrice(prices, countryCode) {
-        return resolvePrice(tokenPricePart(prices), countryCode, { decimals: TOKEN_PRICE_DECIMALS });
+    function tokenPrice(prices, countryCode, options = {}) {
+        const countryRates = (prices && prices.tokens && prices.tokens.countryRates) || (prices && prices.countryRates) || null;
+        const toggles = (prices && prices.toggles) || null;
+        return resolvePrice(tokenPricePart(prices), countryCode, {
+            decimals: TOKEN_PRICE_DECIMALS,
+            countryRates,
+            toggles,
+            ...options
+        });
     }
 
     // What a number of tokens costs ({ currency, amount }), rounded to the cent

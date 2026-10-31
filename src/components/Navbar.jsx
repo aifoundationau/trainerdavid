@@ -12,11 +12,16 @@ export default function Navbar({
   onOpenConsultation,
   onOpenAiChat,
   onOpenTrainerApplication,
-  onGoHome 
+  onGoHome,
+  viewAsRole,
+  onSetViewAsRole,
+  currentView = 'public',
+  onOpenSocial
 }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
-  const isSuperAdmin = user ? isUserSuperAdmin(user.email) : false;
+  const isActualSuperAdmin = user ? isUserSuperAdmin(user.email) : false;
+  const isSuperAdmin = isActualSuperAdmin && !viewAsRole;
   const userRole = user?.role || (isSuperAdmin ? 'superadmin' : (isUserAdmin(user?.email) ? 'admin' : 'supporter'));
   const isMainAdmin = userRole === 'mainadmin';
   const isAdmin = isSuperAdmin || isMainAdmin || userRole !== 'supporter';
@@ -102,11 +107,29 @@ export default function Navbar({
           alignItems: 'center',
           gap: '1.4rem'
         }} className="desktop-nav">
-          <a href="#workouts" style={{ fontSize: '0.92rem', fontWeight: 600, color: 'var(--text-secondary)', transition: 'color 0.2s', whiteSpace: 'nowrap' }}>
+          <a href="#workouts" onClick={onGoHome} style={{ fontSize: '0.92rem', fontWeight: 600, color: currentView === 'public' ? '#fff' : 'var(--text-secondary)', transition: 'color 0.2s', whiteSpace: 'nowrap' }}>
             Workouts
           </a>
 
-          <a href="#services" style={{ fontSize: '0.92rem', fontWeight: 600, color: 'var(--text-secondary)', transition: 'color 0.2s', whiteSpace: 'nowrap' }}>
+          <button 
+            type="button"
+            onClick={onOpenSocial}
+            style={{ 
+              background: 'none', 
+              border: 'none', 
+              fontSize: '0.92rem', 
+              fontWeight: 700, 
+              color: currentView === 'social' ? 'var(--accent-orange)' : 'var(--text-secondary)', 
+              transition: 'color 0.2s', 
+              whiteSpace: 'nowrap', 
+              cursor: 'pointer', 
+              padding: 0 
+            }}
+          >
+            Social
+          </button>
+
+          <a href="#services" onClick={onGoHome} style={{ fontSize: '0.92rem', fontWeight: 600, color: 'var(--text-secondary)', transition: 'color 0.2s', whiteSpace: 'nowrap' }}>
             Services
           </a>
           <button 
@@ -297,6 +320,32 @@ export default function Navbar({
                     <span>{isSuperAdmin ? '🔥 SuperAdmin Console' : (isAdmin ? 'Admin Management Hub' : 'Supporter Portal')}</span>
                   </button>
 
+                  {/* Direct 1-Click Access to Sell & Publish Videos for EVERY Role */}
+                  <button
+                    onClick={() => {
+                      onOpenAdmin('upload');
+                      setUserDropdownOpen(false);
+                    }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem',
+                      background: 'rgba(255, 107, 0, 0.12)',
+                      border: '1px solid rgba(255, 107, 0, 0.3)',
+                      color: '#ff9e40',
+                      padding: '0.45rem 0.75rem',
+                      borderRadius: '8px',
+                      fontSize: '0.8rem',
+                      fontWeight: 700,
+                      marginTop: '0.25rem',
+                      width: '100%',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <span>🎬</span>
+                    <span>Sell & Publish Videos (50% Split)</span>
+                  </button>
+
                   {/* Supporter Opt-In to Become a Trainer / Specialist */}
                   {userRole === 'supporter' && (
                     <button
@@ -322,6 +371,63 @@ export default function Navbar({
                       <span>💼</span>
                       <span>Apply as Coach / Specialist</span>
                     </button>
+                  )}
+
+                  {/* SuperAdmin Role Impersonation / View-As Switcher */}
+                  {isActualSuperAdmin && onSetViewAsRole && (
+                    <div style={{
+                      borderTop: '1px solid var(--border-subtle)',
+                      paddingTop: '0.55rem',
+                      marginTop: '0.2rem'
+                    }}>
+                      <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: 800, marginBottom: '0.35rem', letterSpacing: '0.04em' }}>
+                        👁️ PREVIEW ROLE VIEW:
+                      </div>
+                      <div style={{ display: 'flex', gap: '0.35rem' }}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onSetViewAsRole(null);
+                            setUserDropdownOpen(false);
+                          }}
+                          style={{
+                            flex: 1,
+                            padding: '0.35rem 0.45rem',
+                            borderRadius: '6px',
+                            fontSize: '0.72rem',
+                            fontWeight: 700,
+                            border: '1px solid',
+                            borderColor: !viewAsRole ? '#ef4444' : 'var(--border-subtle)',
+                            background: !viewAsRole ? 'rgba(239, 68, 68, 0.25)' : 'rgba(255, 255, 255, 0.04)',
+                            color: !viewAsRole ? '#ff6b6b' : 'var(--text-secondary)',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          🔥 SuperAdmin
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onSetViewAsRole('supporter');
+                            setUserDropdownOpen(false);
+                          }}
+                          style={{
+                            flex: 1,
+                            padding: '0.35rem 0.45rem',
+                            borderRadius: '6px',
+                            fontSize: '0.72rem',
+                            fontWeight: 700,
+                            border: '1px solid',
+                            borderColor: viewAsRole === 'supporter' ? 'var(--accent-lime)' : 'var(--border-subtle)',
+                            background: viewAsRole === 'supporter' ? 'rgba(74, 222, 128, 0.25)' : 'rgba(255, 255, 255, 0.04)',
+                            color: viewAsRole === 'supporter' ? 'var(--accent-lime)' : 'var(--text-secondary)',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          🌱 Supporter
+                        </button>
+                      </div>
+                    </div>
                   )}
 
                   <button
@@ -425,11 +531,28 @@ export default function Navbar({
             </button>
           )}
 
-          <a href="#workouts" onClick={() => setMobileMenuOpen(false)} style={{ fontSize: '1rem', fontWeight: 600 }}>
+          <a href="#workouts" onClick={() => { if (onGoHome) onGoHome(); setMobileMenuOpen(false); }} style={{ fontSize: '1rem', fontWeight: 600 }}>
             Workouts
           </a>
 
-          <a href="#services" onClick={() => setMobileMenuOpen(false)} style={{ fontSize: '1rem', fontWeight: 600 }}>
+          <button
+            type="button"
+            onClick={() => { if (onOpenSocial) onOpenSocial(); setMobileMenuOpen(false); }}
+            style={{
+              background: 'none',
+              border: 'none',
+              fontSize: '1rem',
+              fontWeight: 700,
+              textAlign: 'left',
+              color: currentView === 'social' ? 'var(--accent-orange)' : '#fff',
+              cursor: 'pointer',
+              padding: 0
+            }}
+          >
+            Social Postcards
+          </button>
+
+          <a href="#services" onClick={() => { if (onGoHome) onGoHome(); setMobileMenuOpen(false); }} style={{ fontSize: '1rem', fontWeight: 600 }}>
             Services
           </a>
 

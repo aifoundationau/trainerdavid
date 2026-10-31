@@ -4,7 +4,7 @@ import { auth } from '../firebase';
 
 const APP_TAG = 'pt';
 
-async function callApi(path, options = {}) {
+export async function callApi(path, options = {}) {
   const fbUser = auth.currentUser;
   if (!fbUser) throw new Error('Sign in with Google to use tokens.');
 

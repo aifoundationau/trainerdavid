@@ -19,4 +19,4 @@ function resolveCredential() {
 initializeApp({ credential: resolveCredential(), projectId: 'ai-foundation-firebase' });
 
 export const auth = getAuth();
-export const db = getFirestore();
+export const db = getFirestore(process.env.FIRESTORE_DATABASE_ID || 'trainerdavid');

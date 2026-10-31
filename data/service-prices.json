@@ -3,9 +3,12 @@
     "tokens": {
       "perToken": {
         "usd": 1,
-        "aud": 1.43
+        "aud": 1.42
       }
-    }
+    },
+    "video-standard": 1,
+    "video-masterclass": 5,
+    "monthly-pass": 99
   },
-  "updatedAt": "2026-10-25T00:25:16.458Z"
+  "updatedAt": "2026-10-31T22:10:04.988Z"
 }

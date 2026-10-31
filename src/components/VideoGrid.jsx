@@ -1,16 +1,34 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Play, Search, Dumbbell, Clock, Check, ChevronRight, ChevronLeft, Coins, Lock, Sparkles } from './Icons';
+import { Play, Search, Dumbbell, Clock, Check, ChevronRight, ChevronLeft, Coins, Lock, Sparkles, Instagram, Facebook } from './Icons';
 import { videoLibrary, categories } from '../data/videos';
 import { fetchCommunityVideos } from '../services/trainerApi';
+import { fetchSocialPosts } from '../services/socialApi';
+import SocialPostcardModal from './SocialPostcardModal';
+import { isUserSuperAdmin } from '../data/adminStore';
 
 const PAGE_SIZE = 9; // 3 videos across x 3 rows down = 9 videos max per panel
 
-export default function VideoGrid({ onSelectVideo, tokens, unlockedVideoIds = [], user, isSubscriber = false }) {
+export default function VideoGrid({ 
+  onSelectVideo, 
+  tokens, 
+  unlockedVideoIds = [], 
+  user, 
+  isSubscriber = false,
+  unlockedPostIds = [],
+  onUnlockSocialSuccess,
+  onTokensChanged,
+  onOpenAuth,
+  onOpenSocial
+}) {
   const [selectedCategory, setSelectedCategory] = useState("All Workouts");
   const [searchQuery, setSearchQuery] = useState("");
   const [difficultyFilter, setDifficultyFilter] = useState("All");
   const [currentPage, setCurrentPage] = useState(1);
   const [communityVideos, setCommunityVideos] = useState([]);
+  const [socialPosts, setSocialPosts] = useState([]);
+  const [selectedSocialPost, setSelectedSocialPost] = useState(null);
+
+  const isSuperAdmin = user ? (isUserSuperAdmin(user.email) && !user.isImpersonating) : false;
 
   useEffect(() => {
     fetchCommunityVideos()
@@ -20,7 +38,28 @@ export default function VideoGrid({ onSelectVideo, tokens, unlockedVideoIds = []
         }
       })
       .catch(() => {});
+
+    fetchSocialPosts()
+      .then(posts => {
+        if (Array.isArray(posts) && posts.length > 0) {
+          setSocialPosts(posts);
+        }
+      })
+      .catch(() => {});
   }, []);
+
+  // Filter social posts for front-page search
+  const filteredSocialPosts = useMemo(() => {
+    if (!searchQuery.trim()) return [];
+    const q = searchQuery.toLowerCase().trim();
+    return socialPosts.filter(p => {
+      return (p.title || '').toLowerCase().includes(q) ||
+        (p.caption || '').toLowerCase().includes(q) ||
+        (p.author || '').toLowerCase().includes(q) ||
+        (p.platform || '').toLowerCase().includes(q) ||
+        (Array.isArray(p.tags) && p.tags.some(t => t.toLowerCase().includes(q)));
+    });
+  }, [socialPosts, searchQuery]);
 
   const allVideos = useMemo(() => {
     const communityIds = new Set(communityVideos.map(v => v.id));
@@ -134,7 +173,7 @@ export default function VideoGrid({ onSelectVideo, tokens, unlockedVideoIds = []
               />
               <input 
                 type="text"
-                placeholder="Search workouts (e.g. chest, row, hack squat, deadlift, triceps, abs)..."
+                placeholder="Search workout videos or social posts (e.g. bench press, row, deadlift, macros, yoga)..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 style={{
@@ -215,6 +254,96 @@ export default function VideoGrid({ onSelectVideo, tokens, unlockedVideoIds = []
           </div>
         </div>
 
+        {/* Matched Social Postcards (Instagram & Facebook) from Search */}
+        {searchQuery.trim() && filteredSocialPosts.length > 0 && (
+          <div style={{
+            background: 'linear-gradient(135deg, rgba(225,48,108,0.08) 0%, rgba(24,119,242,0.08) 100%)',
+            border: '1px solid rgba(255, 255, 255, 0.1)',
+            borderRadius: '16px',
+            padding: '1.25rem',
+            marginBottom: '2rem'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '1rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span style={{ fontSize: '1.15rem' }}>📸</span>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: '#fff', margin: 0 }}>
+                  Matched Social Postcards ({filteredSocialPosts.length})
+                </h3>
+                <span className="badge badge-orange" style={{ fontSize: '0.7rem' }}>1 Token to View</span>
+              </div>
+
+              {onOpenSocial && (
+                <button
+                  type="button"
+                  onClick={onOpenSocial}
+                  className="btn-secondary"
+                  style={{ padding: '0.35rem 0.75rem', fontSize: '0.78rem' }}
+                >
+                  View All on Social Page ↗
+                </button>
+              )}
+            </div>
+
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+              gap: '1rem'
+            }}>
+              {filteredSocialPosts.slice(0, 4).map(sp => {
+                const isIg = sp.platform === 'instagram';
+                const isUnlocked = isSuperAdmin || (unlockedPostIds && unlockedPostIds.includes(sp.id));
+                return (
+                  <div
+                    key={sp.id}
+                    onClick={() => setSelectedSocialPost(sp)}
+                    style={{
+                      background: '#0d111c',
+                      border: isIg ? '1px solid rgba(225, 48, 108, 0.3)' : '1px solid rgba(24, 119, 242, 0.3)',
+                      borderRadius: '12px',
+                      padding: '0.85rem',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      gap: '0.85rem',
+                      alignItems: 'center',
+                      transition: 'transform 0.15s ease'
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-2px)'}
+                    onMouseLeave={(e) => e.currentTarget.style.transform = 'none'}
+                  >
+                    <img
+                      src={sp.thumbnailUrl}
+                      alt={sp.title}
+                      style={{
+                        width: '64px',
+                        height: '64px',
+                        borderRadius: '8px',
+                        objectFit: 'cover',
+                        flexShrink: 0,
+                        filter: isUnlocked ? 'none' : 'blur(2px) brightness(0.8)'
+                      }}
+                    />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', marginBottom: '3px' }}>
+                        {isIg ? <Instagram size={13} color="#e1306c" /> : <Facebook size={13} color="#1877f2" />}
+                        <span style={{ fontSize: '0.7rem', color: isIg ? '#e1306c' : '#1877f2', fontWeight: 700 }}>
+                          {isIg ? 'Instagram' : 'Facebook'}
+                        </span>
+                        <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>• {sp.author}</span>
+                      </div>
+                      <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {sp.title}
+                      </div>
+                      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                        {isUnlocked ? '✓ Unlocked' : '💎 1 Token to Unlock'}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {/* Video Postcards Grid - Strictly 3 across x 3 rows down (9 per page max) */}
         {filteredVideos.length === 0 ? (
           <div style={{
@@ -238,10 +367,11 @@ export default function VideoGrid({ onSelectVideo, tokens, unlockedVideoIds = []
           <>
             <div className="grid-cards">
               {currentVideos.map((video) => {
-                const cost = Math.max(1, Math.round(Number(video.tokenCost) || 1));
+                const isFree = Number(video.tokenCost) === 0;
+                const cost = isFree ? 0 : Math.max(1, Math.round(Number(video.tokenCost) || 1));
                 const isUnlocked = unlockedVideoIds.includes(video.id);
                 const hasTokens = tokens >= cost;
-                const canWatch = isSubscriber || isUnlocked || (user && hasTokens);
+                const canWatch = isSubscriber || isUnlocked || isFree || (user && hasTokens);
 
                 return (
                   <div 
@@ -364,7 +494,12 @@ export default function VideoGrid({ onSelectVideo, tokens, unlockedVideoIds = []
 
                       {/* Bottom Meta & Action Row */}
                       <div className="postcard-meta-row">
-                        {!user ? (
+                        {isFree ? (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', color: '#4ade80', fontSize: '0.78rem', fontWeight: 800 }}>
+                            <Sparkles size={14} color="#4ade80" />
+                            <span>Free to Watch</span>
+                          </div>
+                        ) : !user ? (
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', color: 'var(--text-muted)', fontSize: '0.78rem' }}>
                             <Lock size={13} color="var(--accent-orange)" />
                             <span>{cost} {cost === 1 ? 'Token' : 'Tokens'} • Sign In</span>
@@ -512,6 +647,22 @@ export default function VideoGrid({ onSelectVideo, tokens, unlockedVideoIds = []
         )}
 
       </div>
+
+      {/* Social Postcard Detail Modal from Search */}
+      {selectedSocialPost && (
+        <SocialPostcardModal
+          post={selectedSocialPost}
+          isUnlocked={isSuperAdmin || (unlockedPostIds && unlockedPostIds.includes(selectedSocialPost.id))}
+          user={user}
+          tokens={tokens}
+          onClose={() => setSelectedSocialPost(null)}
+          onUnlockSuccess={(postId) => {
+            if (onUnlockSocialSuccess) onUnlockSocialSuccess(postId);
+          }}
+          onTokensChanged={onTokensChanged}
+          onOpenAuth={onOpenAuth}
+        />
+      )}
     </section>
   );
 }

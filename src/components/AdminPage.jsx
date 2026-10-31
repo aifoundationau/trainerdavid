@@ -51,6 +51,14 @@ import TokensPanel from './TokensPanel';
 import AdminApplicationsPanel from './AdminApplicationsPanel';
 import VideoPublishPanel from './VideoPublishPanel';
 import RolesRubricModal from './RolesRubricModal';
+import AdminMessagesPanel from './AdminMessagesPanel';
+import SocialPublishPanel from './SocialPublishPanel';
+import SuperAdminTokenSettingsPanel from './SuperAdminTokenSettingsPanel';
+import { 
+  getLocalSystemSettings, 
+  getDetectedVisitorCountry, 
+  calculateVisitorTokenPrice 
+} from '../services/systemSettings';
 
 export default function AdminPage({ 
   user, 
@@ -59,19 +67,19 @@ export default function AdminPage({
   onLogout, 
   onBackToPublic, 
   initialTab = 'tokens',
-  onRefreshAppState 
+  onRefreshAppState,
+  viewAsRole,
+  onSetViewAsRole
 }) {
-  const isSuperAdmin = isUserSuperAdmin(user?.email);
+  const isActualSuperAdmin = isUserSuperAdmin(user?.email);
+  const isSuperAdmin = isActualSuperAdmin && !viewAsRole;
   const userRole = user?.role || (isSuperAdmin ? 'superadmin' : (isUserAdmin(user?.email) ? 'admin' : 'supporter'));
   const isMainAdmin = userRole === 'mainadmin';
   const isAdmin = isSuperAdmin || isMainAdmin || userRole !== 'supporter';
-  // Allowed uploaders & video creators
-  const canUpload = isSuperAdmin || isMainAdmin || [
-    'admin', 'trainer', 'strength_coach', 'physiotherapist', 
-    'nutritionist', 'doctor', 'exercise_physiologist', 'rehab_specialist', 'yoga_pilates'
-  ].includes(userRole);
+  // Allowed uploaders & video creators (every role can sell & publish videos to earn 50% revenue)
+  const canUpload = Boolean(user);
   const [activeTab, setActiveTab] = useState(isSuperAdmin ? 'users' : isMainAdmin ? 'applications' : initialTab);
-  const [uploadSubTab, setUploadSubTab] = useState('drive'); // 'drive' | 'video'
+  const [uploadSubTab, setUploadSubTab] = useState('video');
   const [users, setUsers] = useState([]);
   const [purchases, setPurchases] = useState([]);
   const [searchUser, setSearchUser] = useState('');
@@ -80,9 +88,11 @@ export default function AdminPage({
   const [purchaseSearch, setPurchaseSearch] = useState('');
   const [toast, setToast] = useState(null);
 
-  // Universal Token Price state (configured dynamically by SuperAdmin)
+  // Universal Token Price and System Settings
   const [tokenPriceUsd, setTokenPriceUsd] = useState(1.00);
   const [tokenPriceAud, setTokenPriceAud] = useState(1.43);
+  const [systemSettings, setSystemSettings] = useState(getLocalSystemSettings);
+  const [detectedCountry, setDetectedCountry] = useState(getDetectedVisitorCountry);
 
   // Token Purchase processing state on Admin Page
   const [processingPackId, setProcessingPackId] = useState(null);
@@ -153,10 +163,24 @@ export default function AdminPage({
       if (e.detail?.aud) setTokenPriceAud(e.detail.aud);
       else if (e.detail?.usd) setTokenPriceAud(Number((e.detail.usd * 1.43).toFixed(2)));
     };
+    const handleSettingsChange = (e) => {
+      if (e.detail) {
+        setSystemSettings(e.detail);
+        if (e.detail.defaultTokenPriceUsd) setTokenPriceUsd(Number(e.detail.defaultTokenPriceUsd));
+      }
+    };
+    const handleGeoChange = (e) => {
+      if (e.detail?.country) setDetectedCountry(e.detail.country.toUpperCase());
+    };
+
     window.addEventListener('tokenPriceChanged', handlePriceChange);
+    window.addEventListener('systemSettingsUpdated', handleSettingsChange);
+    window.addEventListener('geoTimeSettingsUpdated', handleGeoChange);
     return () => {
       unsubAuth();
       window.removeEventListener('tokenPriceChanged', handlePriceChange);
+      window.removeEventListener('systemSettingsUpdated', handleSettingsChange);
+      window.removeEventListener('geoTimeSettingsUpdated', handleGeoChange);
     };
   }, []);
 
@@ -451,6 +475,55 @@ export default function AdminPage({
               <span>{tokens} Tokens</span>
             </div>
 
+            {/* SuperAdmin Role Impersonation Switcher */}
+            {isActualSuperAdmin && onSetViewAsRole && (
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.35rem',
+                background: 'rgba(0, 0, 0, 0.45)',
+                border: '1px solid var(--border-subtle)',
+                borderRadius: 'var(--radius-full)',
+                padding: '0.2rem 0.35rem'
+              }}>
+                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 700, paddingLeft: '0.4rem' }}>
+                  View As:
+                </span>
+                <button
+                  type="button"
+                  onClick={() => onSetViewAsRole(null)}
+                  style={{
+                    padding: '0.25rem 0.6rem',
+                    borderRadius: 'var(--radius-full)',
+                    fontSize: '0.74rem',
+                    fontWeight: 700,
+                    border: 'none',
+                    background: !viewAsRole ? '#ef4444' : 'transparent',
+                    color: !viewAsRole ? '#fff' : 'var(--text-secondary)',
+                    cursor: 'pointer'
+                  }}
+                >
+                  🔥 SuperAdmin
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onSetViewAsRole('supporter')}
+                  style={{
+                    padding: '0.25rem 0.6rem',
+                    borderRadius: 'var(--radius-full)',
+                    fontSize: '0.74rem',
+                    fontWeight: 700,
+                    border: 'none',
+                    background: viewAsRole === 'supporter' ? 'var(--accent-lime)' : 'transparent',
+                    color: viewAsRole === 'supporter' ? '#000' : 'var(--text-secondary)',
+                    cursor: 'pointer'
+                  }}
+                >
+                  🌱 Supporter
+                </button>
+              </div>
+            )}
+
             {/* Google Profile Pill */}
             {user && (
               <div style={{
@@ -556,21 +629,26 @@ export default function AdminPage({
               { id: 'applications', label: '📋 Applications' },
               { id: 'tokens', label: '💎 Universal Tokens' },
               { id: 'purchases', label: `🛒 Purchases & Ledger (${purchases.length})` },
-              { id: 'upload', label: '📤 Upload & Videos' }
+              { id: 'upload', label: '🎬 Sell Videos & Posts' },
+              { id: 'messages', label: '💬 Messages Inbox' }
             ] : isMainAdmin ? [
               { id: 'applications', label: '📋 Applications', highlight: true },
               { id: 'users', label: `👥 User Directory (${users.length})` },
               { id: 'tokens', label: '💎 Token Funds' },
               { id: 'purchases', label: `🛒 Purchases & Ledger (${purchases.length})` },
-              { id: 'upload', label: '📤 Upload & Videos' }
+              { id: 'upload', label: '🎬 Sell Videos & Posts' },
+              { id: 'messages', label: '💬 Messages Inbox' }
             ] : isAdmin ? [
               { id: 'tokens', label: '💎 Token Funds', highlight: true },
+              { id: 'upload', label: '🎬 Sell Videos & Posts' },
               { id: 'users', label: `👥 User Directory (${users.length})` },
               { id: 'purchases', label: `🛒 Purchases & Ledger (${purchases.length})` },
-              ...(canUpload ? [{ id: 'upload', label: '📤 Upload & Videos' }] : [])
+              { id: 'messages', label: '💬 Messages Inbox' }
             ] : [
               { id: 'tokens', label: '💎 Token Funds', highlight: true },
-              { id: 'purchases', label: `🛒 My Purchases & Ledger (${purchases.filter(p => p.clientEmail?.toLowerCase() === user?.email?.toLowerCase()).length})` }
+              { id: 'upload', label: '🎬 Sell Videos & Posts' },
+              { id: 'purchases', label: `🛒 My Purchases & Ledger (${purchases.filter(p => p.clientEmail?.toLowerCase() === user?.email?.toLowerCase()).length})` },
+              { id: 'messages', label: '💬 Messages Inbox' }
             ]).map(tab => {
               const isActive = activeTab === tab.id;
               return (
@@ -652,6 +730,63 @@ export default function AdminPage({
           {/* TAB 1: ALL TOKEN FUNDS ARE ON THE ADMIN PAGE */}
           {activeTab === 'tokens' && (
             <div>
+              {/* SuperAdmin Universal Token, Country Overrides & Currency Controls */}
+              {isSuperAdmin && (
+                <SuperAdminTokenSettingsPanel 
+                  isSuperAdmin={isSuperAdmin} 
+                  onToast={showToast} 
+                />
+              )}
+
+              {/* System Toggle OFF Notice: No tokens anywhere & all contract details visible to everyone */}
+              {!systemSettings.isTokenSystemEnabled && (
+                <div style={{
+                  background: 'linear-gradient(135deg, rgba(34, 197, 94, 0.15) 0%, rgba(16, 185, 129, 0.08) 100%)',
+                  border: '1px solid rgba(34, 197, 94, 0.4)',
+                  borderRadius: '16px',
+                  padding: '1.5rem',
+                  marginBottom: '2rem'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.5rem' }}>
+                    <ShieldCheck size={20} color="#22c55e" />
+                    <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: '#fff', margin: 0 }}>
+                      ⚡ Open Access Mode Active (Token System Disabled by SuperAdmin)
+                    </h3>
+                  </div>
+                  <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', margin: '0 0 1.25rem 0', lineHeight: 1.5 }}>
+                    The SuperAdmin has switched the token system <strong>OFF</strong>. No tokens are deducted anywhere across the platform. All workout masterclasses, social posts, messaging, and contract details are 100% free and open to everyone.
+                  </p>
+                  
+                  {/* Public Contract & Trainer Contact Information */}
+                  <div style={{
+                    background: 'rgba(0,0,0,0.35)',
+                    border: '1px solid rgba(255,255,255,0.08)',
+                    borderRadius: '12px',
+                    padding: '1rem 1.25rem',
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                    gap: '1rem'
+                  }}>
+                    <div>
+                      <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>Head Coach Direct Email</div>
+                      <div style={{ fontSize: '0.9rem', color: '#fff', fontWeight: 700 }}>david@trainerdavid.com</div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>Coaching Line / WhatsApp</div>
+                      <div style={{ fontSize: '0.9rem', color: 'var(--accent-lime)', fontWeight: 700 }}>+61 400 123 456</div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>Training Facility / Location</div>
+                      <div style={{ fontSize: '0.9rem', color: '#fff', fontWeight: 700 }}>Sydney, NSW, Australia</div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>Contract Terms</div>
+                      <div style={{ fontSize: '0.9rem', color: '#f59e0b', fontWeight: 700 }}>Open Community Access (Zero Token Fees)</div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Token Funds Hero Card */}
               <div style={{
                 background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.12) 0%, rgba(255, 107, 0, 0.08) 100%)',
@@ -733,6 +868,17 @@ export default function AdminPage({
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '1.25rem' }}>
                   {tokenPackages.map(pack => {
                     const isProcessing = processingPackId === `recharge-${pack.tokens}`;
+                    const visitorPricing = calculateVisitorTokenPrice(detectedCountry, systemSettings);
+                    const tokensPerUsd = visitorPricing.tokensPerUsd || 1;
+                    const baseUsdPrice = (pack.tokens / tokensPerUsd) * (systemSettings.defaultTokenPriceUsd || 1.00);
+                    const displayCurrency = visitorPricing.currency || 'USD';
+                    const displayAmount = displayCurrency === 'AUD'
+                      ? (baseUsdPrice * (tokenPriceAud / (tokenPriceUsd || 1) || 1.45)).toFixed(2)
+                      : baseUsdPrice.toFixed(2);
+                    const hoverAmount = displayCurrency === 'AUD'
+                      ? baseUsdPrice.toFixed(2)
+                      : (baseUsdPrice * (tokenPriceAud / (tokenPriceUsd || 1) || 1.45)).toFixed(2);
+                    const hoverCurrency = displayCurrency === 'AUD' ? 'USD' : 'AUD';
 
                     return (
                       <div 
@@ -784,15 +930,18 @@ export default function AdminPage({
                             </div>
                           </div>
 
-                          <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.4rem', margin: '0.75rem 0', flexWrap: 'wrap' }}>
+                          <div 
+                            title={`Strict hover price: ${hoverCurrency} $${hoverAmount} • Geolocation: ${visitorPricing.country}`}
+                            style={{ display: 'flex', alignItems: 'baseline', gap: '0.4rem', margin: '0.75rem 0', flexWrap: 'wrap' }}
+                          >
                             <span style={{ fontSize: '2rem', fontWeight: 900, color: '#fff' }}>
-                              ${(pack.tokens * tokenPriceUsd).toFixed(2)}
+                              ${displayAmount}
                             </span>
                             <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                              USD
+                              {displayCurrency}
                             </span>
                             <span style={{ fontSize: '0.85rem', color: '#f59e0b', fontWeight: 700 }}>
-                              (≈ AUD ${(pack.tokens * (tokenPriceAud || (tokenPriceUsd * 1.43))).toFixed(2)})
+                              (≈ {hoverCurrency} ${hoverAmount})
                             </span>
                           </div>
 
@@ -832,7 +981,7 @@ export default function AdminPage({
                             }}
                           >
                             <StripeIcon size={18} />
-                            <span>{isRedirectingStripe === pack.id ? "Connecting to Stripe..." : `Pay $${(pack.tokens * tokenPriceUsd).toFixed(2)} with Stripe`}</span>
+                            <span>{isRedirectingStripe === pack.id ? "Connecting to Stripe..." : `Pay $${displayAmount} ${displayCurrency} with Stripe`}</span>
                           </button>
 
                           {isSuperAdmin && (
@@ -917,51 +1066,84 @@ export default function AdminPage({
                         />
                       </div>
 
-                      <div style={{
-                        background: 'rgba(0, 0, 0, 0.25)',
-                        padding: '0.65rem 0.85rem',
-                        borderRadius: '10px',
-                        marginBottom: '1rem',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        flexWrap: 'wrap',
-                        gap: '0.4rem'
-                      }}>
-                        <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Total Cost:</span>
-                        <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.4rem' }}>
-                          <strong style={{ fontSize: '1.1rem', color: 'var(--accent-lime)' }}>${((customAmount || 0) * tokenPriceUsd).toFixed(2)} USD</strong>
-                          <span style={{ fontSize: '0.85rem', color: '#f59e0b', fontWeight: 700 }}>
-                            (≈ AUD ${((customAmount || 0) * (tokenPriceAud || (tokenPriceUsd * 1.43))).toFixed(2)})
-                          </span>
-                        </div>
-                      </div>
+                      {(() => {
+                        const customVisitorPricing = calculateVisitorTokenPrice(detectedCountry, systemSettings);
+                        const customTokensPerUsd = customVisitorPricing.tokensPerUsd || 1;
+                        const customBaseUsd = ((customAmount || 0) / customTokensPerUsd) * (systemSettings.defaultTokenPriceUsd || 1.00);
+                        const customDisplayCurrency = customVisitorPricing.currency || 'USD';
+                        const customDisplayAmount = customDisplayCurrency === 'AUD'
+                          ? (customBaseUsd * (tokenPriceAud / (tokenPriceUsd || 1) || 1.45)).toFixed(2)
+                          : customBaseUsd.toFixed(2);
+                        const customHoverAmount = customDisplayCurrency === 'AUD'
+                          ? customBaseUsd.toFixed(2)
+                          : (customBaseUsd * (tokenPriceAud / (tokenPriceUsd || 1) || 1.45)).toFixed(2);
+                        const customHoverCurrency = customDisplayCurrency === 'AUD' ? 'USD' : 'AUD';
 
-                      <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.5, marginBottom: '1.25rem' }}>
-                        Universal token price is set by the SuperAdmin (1 token = USD ${tokenPriceUsd.toFixed(2)}). Enter any amount of tokens to credit your balance immediately.
-                      </p>
+                        return (
+                          <>
+                            <div style={{
+                              background: 'rgba(0, 0, 0, 0.25)',
+                              padding: '0.65rem 0.85rem',
+                              borderRadius: '10px',
+                              marginBottom: '1rem',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              flexWrap: 'wrap',
+                              gap: '0.4rem'
+                            }}
+                            title={`Hover: ${customHoverCurrency} $${customHoverAmount} • Geolocation: ${customVisitorPricing.country}`}
+                            >
+                              <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Total Cost:</span>
+                              <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.4rem' }}>
+                                <strong style={{ fontSize: '1.1rem', color: 'var(--accent-lime)' }}>
+                                  ${customDisplayAmount} {customDisplayCurrency}
+                                </strong>
+                                <span style={{ fontSize: '0.85rem', color: '#f59e0b', fontWeight: 700 }}>
+                                  (≈ {customHoverCurrency} ${customHoverAmount})
+                                </span>
+                              </div>
+                            </div>
+
+                            <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.5, marginBottom: '1.25rem' }}>
+                              Universal token rate: <strong>USD $1.00 = {customTokensPerUsd} Tokens</strong> (Geolocated for {customVisitorPricing.country}). Enter any amount of tokens to credit your balance immediately.
+                            </p>
+                          </>
+                        );
+                      })()}
                     </div>
 
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                      <button
-                        onClick={() => handleStripeCustomRecharge(customAmount)}
-                        disabled={isRedirectingStripe === 'custom'}
-                        className="btn-primary"
-                        style={{
-                          width: '100%',
-                          justifyContent: 'center',
-                          padding: '0.8rem',
-                          fontSize: '0.92rem',
-                          background: 'linear-gradient(135deg, #635bff 0%, #4338ca 100%)',
-                          boxShadow: '0 4px 15px rgba(99, 91, 255, 0.35)',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '0.5rem'
-                        }}
-                      >
-                        <StripeIcon size={18} />
-                        <span>{isRedirectingStripe === 'custom' ? "Connecting to Stripe..." : `Pay $${((customAmount || 0) * tokenPriceUsd).toFixed(2)} with Stripe`}</span>
-                      </button>
+                      {(() => {
+                        const customVisitorPricing = calculateVisitorTokenPrice(detectedCountry, systemSettings);
+                        const customTokensPerUsd = customVisitorPricing.tokensPerUsd || 1;
+                        const customBaseUsd = ((customAmount || 0) / customTokensPerUsd) * (systemSettings.defaultTokenPriceUsd || 1.00);
+                        const customDisplayCurrency = customVisitorPricing.currency || 'USD';
+                        const customDisplayAmount = customDisplayCurrency === 'AUD'
+                          ? (customBaseUsd * (tokenPriceAud / (tokenPriceUsd || 1) || 1.45)).toFixed(2)
+                          : customBaseUsd.toFixed(2);
+                        return (
+                          <button
+                            onClick={() => handleStripeCustomRecharge(customAmount)}
+                            disabled={isRedirectingStripe === 'custom'}
+                            className="btn-primary"
+                            style={{
+                              width: '100%',
+                              justifyContent: 'center',
+                              padding: '0.8rem',
+                              fontSize: '0.92rem',
+                              background: 'linear-gradient(135deg, #635bff 0%, #4338ca 100%)',
+                              boxShadow: '0 4px 15px rgba(99, 91, 255, 0.35)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '0.5rem'
+                            }}
+                          >
+                            <StripeIcon size={18} />
+                            <span>{isRedirectingStripe === 'custom' ? "Connecting to Stripe..." : `Pay $${customDisplayAmount} ${customDisplayCurrency} with Stripe`}</span>
+                          </button>
+                        );
+                      })()}
 
                       {isSuperAdmin && (
                         <button
@@ -1833,24 +2015,7 @@ export default function AdminPage({
 
           {activeTab === 'upload' && canUpload && (
             <div>
-              <div style={{ display: 'flex', gap: '0.6rem', marginBottom: '1.5rem', justifyContent: 'center' }}>
-                <button
-                  type="button"
-                  onClick={() => setUploadSubTab('drive')}
-                  style={{
-                    padding: '0.55rem 1.25rem',
-                    borderRadius: '10px',
-                    fontSize: '0.88rem',
-                    fontWeight: 700,
-                    background: uploadSubTab === 'drive' ? 'var(--accent-orange)' : 'rgba(255, 255, 255, 0.05)',
-                    color: uploadSubTab === 'drive' ? '#fff' : 'var(--text-secondary)',
-                    border: uploadSubTab === 'drive' ? '1px solid var(--accent-orange)' : '1px solid var(--border-subtle)',
-                    cursor: 'pointer',
-                    transition: 'all 0.15s'
-                  }}
-                >
-                  📁 Google Drive Documents
-                </button>
+              <div style={{ display: 'flex', gap: '0.6rem', marginBottom: '1.5rem', justifyContent: 'center', flexWrap: 'wrap' }}>
                 <button
                   type="button"
                   onClick={() => setUploadSubTab('video')}
@@ -1866,22 +2031,78 @@ export default function AdminPage({
                     transition: 'all 0.15s'
                   }}
                 >
-                  🎬 Publish Workout Masterclass (50/50 Split)
+                  🎬 Workout Videos (YouTube)
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setUploadSubTab('social')}
+                  style={{
+                    padding: '0.55rem 1.25rem',
+                    borderRadius: '10px',
+                    fontSize: '0.88rem',
+                    fontWeight: 700,
+                    background: uploadSubTab === 'social' ? 'var(--accent-orange)' : 'rgba(255, 255, 255, 0.05)',
+                    color: uploadSubTab === 'social' ? '#fff' : 'var(--text-secondary)',
+                    border: uploadSubTab === 'social' ? '1px solid var(--accent-orange)' : '1px solid var(--border-subtle)',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s'
+                  }}
+                >
+                  📱 Social Media Posts (All Platforms)
+                </button>
+                {isAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => setUploadSubTab('drive')}
+                    style={{
+                      padding: '0.55rem 1.25rem',
+                      borderRadius: '10px',
+                      fontSize: '0.88rem',
+                      fontWeight: 700,
+                      background: uploadSubTab === 'drive' ? 'var(--accent-orange)' : 'rgba(255, 255, 255, 0.05)',
+                      color: uploadSubTab === 'drive' ? '#fff' : 'var(--text-secondary)',
+                      border: uploadSubTab === 'drive' ? '1px solid var(--accent-orange)' : '1px solid var(--border-subtle)',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s'
+                    }}
+                  >
+                    📁 Google Drive Documents
+                  </button>
+                )}
               </div>
 
-              {uploadSubTab === 'drive' ? (
+              {uploadSubTab === 'social' ? (
+                <SocialPublishPanel
+                  user={user}
+                  showToast={showToast}
+                  onExploreSocial={onBackToPublic}
+                  onPostPublished={() => {
+                    if (onRefreshAppState) onRefreshAppState();
+                  }}
+                />
+              ) : uploadSubTab === 'drive' && isAdmin ? (
                 <AdminUploadPanel showToast={showToast} defaultEmail={auth.currentUser?.email || user?.email || ''} />
               ) : (
                 <VideoPublishPanel 
                   user={user} 
                   showToast={showToast} 
+                  onExploreWorkouts={onBackToPublic}
                   onVideoPublished={() => { 
                     if (onRefreshAppState) onRefreshAppState(); 
                   }} 
                 />
               )}
             </div>
+          )}
+
+          {activeTab === 'messages' && (
+            <AdminMessagesPanel
+              user={user}
+              isSuperAdmin={isSuperAdmin}
+              tokens={tokens}
+              onRefreshAppState={onRefreshAppState}
+              onOpenRechargeModal={() => setActiveTab('tokens')}
+            />
           )}
 
         </div>

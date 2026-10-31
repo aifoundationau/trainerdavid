@@ -47,16 +47,16 @@ export const CORE_SERVICES = [
     ]
   },
   {
-    id: "physiotherapy",
-    title: "Physiotherapy & Rehab Assessment",
-    badge: "Injury Prevention",
-    tagline: "Overcome nagging joint pain, mobility blocks & posture faults",
-    description: "Comprehensive biomechanical audit of your joints, kinetic chains, and movement restrictions to rehabilitate old injuries and build a pain-free, resilient body.",
+    id: "group-fitness",
+    title: "Group Fitness & Studio Conditioning",
+    badge: "Pilates • Yoga • Aerobics",
+    tagline: "Structured physical conditioning with Pilates, Yoga & Aerobics",
+    description: "Structured physical conditioning blending Pilates core control, dynamic yoga mobility sequences, and high-energy aerobics designed for studio and group fitness longevity.",
     features: [
-      "Full kinetic chain & posture imbalance diagnosis",
-      "Joint decompression & active mobility routines",
-      "Corrective exercise prescribing for shoulders, knees, & spine",
-      "Safe return-to-heavy-lifting ramp protocols"
+      "Pilates core stabilization, pelvic alignment & spinal articulation",
+      "Dynamic yoga mobility sequences, breathwork & active recovery",
+      "High-energy aerobic conditioning & cardiovascular endurance",
+      "Structured group exercise & studio fitness progressions"
     ]
   }
 ];
@@ -80,10 +80,10 @@ const INITIAL_USERS = [
     name: "Coach David",
     givenName: "David",
     picture: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80",
-    tokens: 100,
-    role: "admin",
+    tokens: 9999,
+    role: "superadmin",
     registeredAt: "2026-09-01T08:00:00.000Z",
-    notes: "Lead Trainer & System Administrator."
+    notes: "Registered Firebase SuperAdmin. Full credential grant authority across all users."
   },
   {
     id: "google_trainer_002",
@@ -160,9 +160,9 @@ const INITIAL_BOOKINGS = [
     clientName: "Marcus Vance",
     clientEmail: "marcus.vance@gmail.com",
     phone: "+61 412 889 012",
-    serviceTitle: "Physiotherapy & Rehab Assessment",
-    serviceCategory: "Injury Prevention",
-    goalOrNotes: "Right patellar tendon discomfort during deep squats. Need joint mobilization protocol.",
+    serviceTitle: "Group Fitness & Studio Conditioning",
+    serviceCategory: "Pilates, Yoga & Aerobics",
+    goalOrNotes: "Interested in studio Pilates and dynamic yoga conditioning for core stability and athletic posture.",
     status: "Confirmed",
     requestedAt: "2026-10-06T10:15:00.000Z"
   },
@@ -516,7 +516,7 @@ export function registerOrUpdateGoogleUser(googleProfile, backupPassword = '', a
       } else if (assignedRole) {
         effectiveRole = assignedRole;
       } else if (!effectiveRole) {
-        effectiveRole = isDavid ? 'admin' : 'supporter';
+        effectiveRole = 'supporter';
       }
 
       const updated = {
@@ -532,8 +532,8 @@ export function registerOrUpdateGoogleUser(googleProfile, backupPassword = '', a
       localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
       return updated;
     } else {
-      // New user registration: role given under Google login button
-      const effectiveRole = isSuperAdmin ? 'superadmin' : (assignedRole || (isDavid ? 'admin' : 'supporter'));
+      // New user registration: immediately becomes a supporter with 0 initial tokens
+      const effectiveRole = isSuperAdmin ? 'superadmin' : (assignedRole || 'supporter');
       const newUser = {
         id: googleProfile.id || `google_${Date.now()}`,
         email: googleProfile.email,
@@ -541,13 +541,13 @@ export function registerOrUpdateGoogleUser(googleProfile, backupPassword = '', a
         givenName: googleProfile.givenName || googleProfile.name?.split(' ')[0] || 'User',
         picture: googleProfile.picture || '',
         role: effectiveRole,
-        tokens: isSuperAdmin ? 9999 : (['mainadmin', 'admin', 'trainer', 'strength_coach', 'doctor', 'physiotherapist', 'nutritionist', 'exercise_physiologist', 'rehab_specialist', 'yoga_pilates', 'accountant'].includes(effectiveRole) ? 50 : (isDavid ? 50 : 0)),
+        tokens: isSuperAdmin ? 9999 : (effectiveRole === 'supporter' ? 0 : 50),
         backupPassword: backupPassword || '',
         hasBackupPassword: Boolean(backupPassword),
         registeredAt: new Date().toISOString(),
         notes: isSuperAdmin 
           ? "Registered Firebase SuperAdmin. Full credential grant authority across all users." 
-          : `Registered with ${effectiveRole.toUpperCase()} role given under Google Login.`
+          : "Registered Supporter (no other functions given until assigned by SuperAdmin)."
       };
       users.unshift(newUser);
       localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));

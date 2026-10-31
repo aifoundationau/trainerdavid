@@ -70,23 +70,13 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess }) {
     });
   };
 
-  // When Google profile is received, ask for Email + Secondary Backup Password
+  // When Google profile is received, register & complete login as Supporter immediately
   const handleGoogleProfileReceived = (profile) => {
-    setPendingGoogleProfile(profile);
-    setBackupEmail(profile.email);
-
-    // Check if user already has a backup password in database
-    const users = getRegisteredUsers();
-    const existing = users.find(u => u.email.toLowerCase() === profile.email.toLowerCase());
-    if (existing && existing.backupPassword) {
-      // User already has backup password set up: complete login immediately with their stored role
-      const updatedUser = registerOrUpdateGoogleUser(profile, '');
-      onLoginSuccess({ ...(updatedUser || { ...profile, role: 'supporter' }), provider: profile.provider });
-      onClose();
-    } else {
-      // Prompt user to add secondary backup password
-      setAuthMode('set_password_step');
-    }
+    const isSuper = isUserSuperAdmin(profile.email);
+    const role = isSuper ? 'superadmin' : 'supporter';
+    const updatedUser = registerOrUpdateGoogleUser(profile, '');
+    onLoginSuccess({ ...(updatedUser || { ...profile, role }), provider: profile.provider });
+    onClose();
   };
 
   // Submit Secondary Backup Password Setup

@@ -36,7 +36,7 @@ export default function Footer({ onOpenTokenStore, onOpenConsultation, onOpenAdm
               </div>
             </div>
             <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', lineHeight: 1.6, marginBottom: '1.25rem' }}>
-              Premier online personal training, sports conditioning, and physiotherapy rehabilitation. Master 31+ lifts with injury-free biomechanics.
+              Premier online personal training, sports conditioning, and structured physical conditioning (Pilates, Yoga & Aerobics). Master 31+ lifts with injury-free biomechanics.
             </p>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
               <ShieldCheck size={16} color="var(--accent-lime)" />
@@ -66,37 +66,9 @@ export default function Footer({ onOpenTokenStore, onOpenConsultation, onOpenAdm
             <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '0.65rem', fontSize: '0.88rem', color: 'var(--text-secondary)' }}>
               <li><button onClick={() => onOpenConsultation("1-on-1 Online Personal Training")} style={{ background: 'none', color: 'inherit', textAlign: 'left', fontSize: 'inherit' }}>1-on-1 Personal Training</button></li>
               <li><button onClick={() => onOpenConsultation("Custom Nutrition & Macro Blueprint")} style={{ background: 'none', color: 'inherit', textAlign: 'left', fontSize: 'inherit' }}>Custom Nutrition Plans</button></li>
-              <li><button onClick={() => onOpenConsultation("Physiotherapy & Rehab Assessment")} style={{ background: 'none', color: 'inherit', textAlign: 'left', fontSize: 'inherit' }}>Physiotherapy & Rehab</button></li>
+              <li><button onClick={() => onOpenConsultation("Group Fitness & Studio Conditioning (Pilates, Yoga, Aerobics)")} style={{ background: 'none', color: 'inherit', textAlign: 'left', fontSize: 'inherit' }}>Group Fitness (Pilates, Yoga, Aerobics)</button></li>
               <li><button onClick={() => onOpenConsultation("Sports Performance Coaching")} style={{ background: 'none', color: 'inherit', textAlign: 'left', fontSize: 'inherit' }}>Sports Performance</button></li>
               <li><button onClick={onOpenTokenStore} style={{ background: 'none', color: '#f59e0b', fontWeight: 700, textAlign: 'left', fontSize: 'inherit' }}>Recharge FitTokens 💎</button></li>
-              {onOpenAdmin && (
-                <li>
-                  <button 
-                    onClick={() => {
-                      if (!user && onOpenAuth) {
-                        onOpenAuth();
-                      } else {
-                        onOpenAdmin();
-                      }
-                    }} 
-                    style={{ 
-                      background: 'none', 
-                      color: user ? 'var(--accent-orange)' : 'var(--text-muted)', 
-                      fontWeight: 700, 
-                      textAlign: 'left', 
-                      fontSize: 'inherit',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '0.4rem',
-                      cursor: 'pointer'
-                    }}
-                    title={user ? `Coach Admin Support (Signed in as ${user.email})` : "Admin support is available once logged in through Google"}
-                  >
-                    <ShieldCheck size={14} color={user ? 'var(--accent-orange)' : 'var(--text-muted)'} />
-                    <span>{user ? 'Admin Support & Portal 🔒' : 'Admin Support (Google Login Required) 🔒'}</span>
-                  </button>
-                </li>
-              )}
             </ul>
           </div>
 

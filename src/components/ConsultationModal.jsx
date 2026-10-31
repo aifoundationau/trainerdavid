@@ -3,11 +3,17 @@ import { X, Sparkles, CheckCircle, Calendar, Dumbbell, ShieldCheck } from './Ico
 import { addAdminBooking, addAdminPurchase } from '../data/adminStore';
 
 export default function ConsultationModal({ isOpen, onClose, preselectedService, user }) {
+  const normalizeService = (svc) => {
+    if (!svc) return '1-on-1 Online Personal Training';
+    if (svc === 'Physiotherapy & Rehab Assessment') return 'Group Fitness & Studio Conditioning (Pilates, Yoga, Aerobics)';
+    return svc;
+  };
+
   const [formData, setFormData] = useState({
     fullName: user?.name || '',
     email: user?.email || '',
     phone: '',
-    serviceType: preselectedService || '1-on-1 Online Personal Training',
+    serviceType: normalizeService(preselectedService),
     fitnessGoal: 'Muscle Hypertrophy & Strength',
     injuryHistory: ''
   });
@@ -21,7 +27,7 @@ export default function ConsultationModal({ isOpen, onClose, preselectedService,
         ...prev,
         fullName: user?.name || prev.fullName,
         email: user?.email || prev.email,
-        serviceType: preselectedService || prev.serviceType || '1-on-1 Online Personal Training'
+        serviceType: normalizeService(preselectedService) || prev.serviceType || '1-on-1 Online Personal Training'
       }));
     }
   }, [isOpen, preselectedService, user]);
@@ -81,7 +87,7 @@ export default function ConsultationModal({ isOpen, onClose, preselectedService,
               Book with Trainer David
             </h2>
             <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
-              1-on-1 coaching, custom nutrition plan, sports performance or physiotherapy
+              1-on-1 coaching, custom nutrition plan, sports performance or group fitness (Pilates, Yoga, Aerobics)
             </div>
           </div>
 
@@ -212,7 +218,7 @@ export default function ConsultationModal({ isOpen, onClose, preselectedService,
                 <option value="1-on-1 Online Personal Training">1-on-1 Online Personal Training</option>
                 <option value="Nutrition & Macro Blueprint">Nutrition & Macro Blueprint</option>
                 <option value="Sports Performance Coaching">Sports Performance Coaching</option>
-                <option value="Physiotherapy & Rehab Assessment">Physiotherapy & Rehab Assessment</option>
+                <option value="Group Fitness & Studio Conditioning (Pilates, Yoga, Aerobics)">Group Fitness & Studio Conditioning (Pilates, Yoga, Aerobics)</option>
               </select>
             </div>
 

@@ -9,7 +9,7 @@
     "start": "node dev-runner.mjs",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node --test tests/token-pricing.test.js tests/token-balances.test.js tests/token-routes.test.js tests/trainer-and-split.test.js tests/timezone-dst.test.js tests/roles-rubric.test.js tests/video-extract.test.js",
+    "test": "node --test tests/token-pricing.test.js tests/token-balances.test.js tests/token-routes.test.js tests/trainer-and-split.test.js tests/timezone-dst.test.js tests/roles-rubric.test.js tests/video-extract.test.js tests/messaging.test.js tests/social-publish.test.js tests/creator-rates.test.js tests/superadmin-token-settings.test.js tests/suburb-detection.test.js",
     "check:startup": "node scripts/check-startup.js server.js"
   },
   "dependencies": {

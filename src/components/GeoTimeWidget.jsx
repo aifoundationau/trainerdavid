@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { getTimezoneDetails, resolveClosestTimezone, getLiveTimezoneCatalog } from '../services/timezoneService';
+import { searchSuburbs, findBestLocalMatch } from '../services/suburbService';
 
 // Default Australian regional baseline
 const DEFAULT_SETTINGS = {
@@ -55,8 +56,23 @@ export default function GeoTimeWidget() {
   const [detectingLocation, setDetectingLocation] = useState(false);
   const [detectStatus, setDetectStatus] = useState('');
 
+  // Suburb autocomplete and live pick-up state
+  const [suburbSuggestions, setSuburbSuggestions] = useState([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [isSearchingSuburbs, setIsSearchingSuburbs] = useState(false);
+  const [highlightedIndex, setHighlightedIndex] = useState(-1);
+  const suburbInputRef = useRef(null);
+  const debounceTimerRef = useRef(null);
+
   // Form draft state for the popup modal
   const [draft, setDraft] = useState(settings);
+
+  // Clean up debounce timer on unmount
+  useEffect(() => {
+    return () => {
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    };
+  }, []);
 
   // Synchronize live clock every second
   useEffect(() => {
@@ -85,6 +101,128 @@ export default function GeoTimeWidget() {
     }
   }, []);
 
+  // Handle selecting or automatically picking up a suburb/city
+  const handleSelectPlace = useCallback((place) => {
+    if (!place) return;
+    const tzRes = resolveClosestTimezone({
+      lat: place.lat,
+      lon: place.lon,
+      suburb: place.suburb,
+      state: place.state,
+      country: place.country || 'AU',
+      date: currentTime
+    });
+
+    setDraft(prev => ({
+      ...prev,
+      suburb: place.suburb,
+      state: place.state,
+      country: place.country || 'AU',
+      lat: place.lat,
+      lon: place.lon,
+      timezone: place.timezone || tzRes.timezone
+    }));
+
+    fetchWeather(place.lat, place.lon);
+    setDetectStatus(`✓ Picked up: ${place.suburb}${place.state ? `, ${place.state}` : ''} • Timezone: ${place.timezone || tzRes.timezone}`);
+    setShowSuggestions(false);
+    setSuburbSuggestions([]);
+    setHighlightedIndex(-1);
+  }, [currentTime, fetchWeather]);
+
+  // Handle typing in Suburb input: instant detection + debounced global search
+  const handleSuburbChange = (e) => {
+    const value = e.target.value;
+    setDraft(prev => ({ ...prev, suburb: value }));
+
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+
+    const trimmed = value.trim();
+    if (!trimmed) {
+      setSuburbSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+
+    // Check if user entered combined "Suburb, State" or "Suburb State" (e.g. "Robina QLD" or "Bondi, NSW")
+    const combinedMatch = trimmed.match(/^(.*?)(?:,\s*|\s+)(NSW|QLD|VIC|SA|WA|TAS|NT|ACT|NZ)$/i);
+    if (combinedMatch) {
+      const parsedSub = combinedMatch[1].trim();
+      const parsedState = combinedMatch[2].toUpperCase();
+      const localMatch = findBestLocalMatch(parsedSub);
+      if (localMatch) {
+        handleSelectPlace({
+          ...localMatch,
+          suburb: parsedSub || localMatch.suburb,
+          state: parsedState
+        });
+        return;
+      }
+    }
+
+    // Instant check: if exact name matches in local catalog, immediately pick up
+    const exactLocal = findBestLocalMatch(trimmed);
+    if (exactLocal && exactLocal.suburb.toLowerCase() === trimmed.toLowerCase()) {
+      handleSelectPlace(exactLocal);
+      return;
+    }
+
+    // Debounced query for autocomplete dropdown
+    setIsSearchingSuburbs(true);
+    debounceTimerRef.current = setTimeout(async () => {
+      try {
+        const matches = await searchSuburbs(trimmed);
+        setSuburbSuggestions(matches);
+        setShowSuggestions(matches.length > 0);
+        setHighlightedIndex(-1);
+      } catch (_) {
+        // Silently fall back
+      } finally {
+        setIsSearchingSuburbs(false);
+      }
+    }, 120);
+  };
+
+  // Suburb keyboard navigation
+  const handleSuburbKeyDown = (e) => {
+    if (!showSuggestions || suburbSuggestions.length === 0) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const best = findBestLocalMatch(draft.suburb);
+        if (best) handleSelectPlace(best);
+      }
+      return;
+    }
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setHighlightedIndex(prev => (prev + 1 < suburbSuggestions.length ? prev + 1 : 0));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setHighlightedIndex(prev => (prev - 1 >= 0 ? prev - 1 : suburbSuggestions.length - 1));
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (highlightedIndex >= 0 && highlightedIndex < suburbSuggestions.length) {
+        handleSelectPlace(suburbSuggestions[highlightedIndex]);
+      } else if (suburbSuggestions.length > 0) {
+        handleSelectPlace(suburbSuggestions[0]);
+      }
+    } else if (e.key === 'Escape') {
+      setShowSuggestions(false);
+    }
+  };
+
+  // Suburb blur: close dropdown with small delay to permit option click
+  const handleSuburbBlur = () => {
+    setTimeout(() => {
+      setShowSuggestions(false);
+      const best = findBestLocalMatch(draft.suburb);
+      if (best && (!draft.state || draft.state === DEFAULT_SETTINGS.state)) {
+        handleSelectPlace(best);
+      }
+    }, 250);
+  };
+
   useEffect(() => {
     fetchWeather(settings.lat, settings.lon);
     const interval = setInterval(() => fetchWeather(settings.lat, settings.lon), 30 * 60 * 1000);
@@ -94,12 +232,16 @@ export default function GeoTimeWidget() {
   // Open modal and sync draft
   const handleOpen = () => {
     setDraft({ ...settings });
+    setShowSuggestions(false);
+    setSuburbSuggestions([]);
     setDetectStatus('');
     setIsOpen(true);
   };
 
   const handleClose = () => {
     setIsOpen(false);
+    setShowSuggestions(false);
+    setSuburbSuggestions([]);
     setDetectStatus('');
   };
 
@@ -502,25 +644,137 @@ export default function GeoTimeWidget() {
                   </button>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '0.5rem' }}>
-                  <input
-                    type="text"
-                    id="geo-suburb-input"
-                    data-agent-id="geo-suburb-input"
-                    data-testid="geo-suburb-input"
-                    value={draft.suburb}
-                    placeholder="Suburb / Town (e.g. Bondi)"
-                    onChange={(e) => setDraft({ ...draft, suburb: e.target.value })}
-                    style={{
-                      background: '#04070a',
-                      border: '1px solid rgba(255, 255, 255, 0.12)',
-                      borderRadius: '8px',
-                      padding: '0.5rem 0.75rem',
-                      fontSize: '0.82rem',
-                      color: '#fff',
-                      outline: 'none'
-                    }}
-                  />
+                <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '0.5rem', position: 'relative' }}>
+                  <div style={{ position: 'relative' }}>
+                    <input
+                      ref={suburbInputRef}
+                      type="text"
+                      id="geo-suburb-input"
+                      data-agent-id="geo-suburb-input"
+                      data-testid="geo-suburb-input"
+                      value={draft.suburb}
+                      placeholder="Suburb / Town (e.g. Bondi)"
+                      autoComplete="off"
+                      onChange={handleSuburbChange}
+                      onKeyDown={handleSuburbKeyDown}
+                      onFocus={() => {
+                        if (suburbSuggestions.length > 0) setShowSuggestions(true);
+                      }}
+                      onBlur={handleSuburbBlur}
+                      style={{
+                        width: '100%',
+                        boxSizing: 'border-box',
+                        background: '#04070a',
+                        border: '1px solid rgba(255, 255, 255, 0.12)',
+                        borderRadius: '8px',
+                        padding: '0.5rem 0.75rem',
+                        fontSize: '0.82rem',
+                        color: '#fff',
+                        outline: 'none'
+                      }}
+                    />
+                    {isSearchingSuburbs && (
+                      <span style={{
+                        position: 'absolute',
+                        right: '10px',
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        fontSize: '0.72rem',
+                        color: '#ff9e40',
+                        pointerEvents: 'none'
+                      }}>
+                        ⚡
+                      </span>
+                    )}
+
+                    {/* Suburb Suggestions Dropdown */}
+                    {showSuggestions && suburbSuggestions.length > 0 && (
+                      <ul
+                        role="listbox"
+                        aria-label="Suburb suggestions"
+                        data-agent-id="geo-suburb-suggestions-list"
+                        data-testid="geo-suburb-suggestions-list"
+                        style={{
+                          position: 'absolute',
+                          top: 'calc(100% + 4px)',
+                          left: 0,
+                          width: '145%',
+                          maxWidth: '380px',
+                          background: '#070b12',
+                          border: '1px solid rgba(255, 107, 0, 0.5)',
+                          borderRadius: '10px',
+                          boxShadow: '0 15px 35px rgba(0, 0, 0, 0.95), 0 0 20px rgba(255, 107, 0, 0.25)',
+                          zIndex: 1000,
+                          margin: 0,
+                          padding: '4px',
+                          listStyle: 'none',
+                          maxHeight: '175px',
+                          overflowY: 'auto'
+                        }}
+                      >
+                        {suburbSuggestions.map((place, idx) => {
+                          const isHighlighted = idx === highlightedIndex;
+                          return (
+                            <li
+                              key={`${place.suburb}-${place.state}-${place.country}-${idx}`}
+                              role="option"
+                              aria-selected={isHighlighted}
+                              data-agent-id={`geo-suburb-suggestion-${idx}`}
+                              data-testid={`geo-suburb-suggestion-${idx}`}
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                handleSelectPlace(place);
+                              }}
+                              onMouseEnter={() => setHighlightedIndex(idx)}
+                              style={{
+                                padding: '6px 10px',
+                                borderRadius: '6px',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                fontSize: '0.78rem',
+                                background: isHighlighted ? 'rgba(255, 107, 0, 0.22)' : 'transparent',
+                                color: isHighlighted ? '#fff' : '#cbd5e1',
+                                transition: 'background 0.12s ease'
+                              }}
+                            >
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                                <span style={{ fontWeight: 700, color: '#fff' }}>{place.suburb}</span>
+                                {place.state && (
+                                  <span style={{
+                                    fontSize: '0.65rem',
+                                    padding: '1px 5px',
+                                    borderRadius: '4px',
+                                    background: 'rgba(255, 107, 0, 0.18)',
+                                    color: '#ff9e40',
+                                    fontWeight: 700
+                                  }}>
+                                    {place.state}
+                                  </span>
+                                )}
+                                {place.country && (
+                                  <span style={{
+                                    fontSize: '0.62rem',
+                                    padding: '1px 4px',
+                                    borderRadius: '3px',
+                                    background: 'rgba(255, 255, 255, 0.08)',
+                                    color: '#94a3b8'
+                                  }}>
+                                    {place.country}
+                                  </span>
+                                )}
+                              </div>
+                              <div style={{ fontSize: '0.66rem', color: '#86efac', textAlign: 'right', fontWeight: 600 }}>
+                                {place.timezone ? place.timezone.replace('Australia/', '').replace('_', ' ') : ''}
+                              </div>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+                  </div>
+
                   <input
                     type="text"
                     id="geo-state-input"
@@ -546,6 +800,7 @@ export default function GeoTimeWidget() {
                       }));
                     }}
                     style={{
+                      boxSizing: 'border-box',
                       background: '#04070a',
                       border: '1px solid rgba(255, 255, 255, 0.12)',
                       borderRadius: '8px',
@@ -562,33 +817,19 @@ export default function GeoTimeWidget() {
                 <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap', marginTop: '0.35rem', alignItems: 'center' }}>
                   <span style={{ fontSize: '0.65rem', color: '#94a3b8' }}>Quick:</span>
                   {[
-                    { suburb: 'Robina', state: 'QLD', lat: -28.0718, lon: 153.3824 },
-                    { suburb: 'Summer Hill', state: 'NSW', lat: -33.8917, lon: 151.1378 },
-                    { suburb: 'Melbourne', state: 'VIC', lat: -37.8136, lon: 144.9631 },
-                    { suburb: 'Adelaide', state: 'SA', lat: -34.9285, lon: 138.6007 },
-                    { suburb: 'Perth', state: 'WA', lat: -31.9505, lon: 115.8605 }
+                    { suburb: 'Robina', state: 'QLD', country: 'AU', lat: -28.0718, lon: 153.3824, timezone: 'Australia/Brisbane' },
+                    { suburb: 'Summer Hill', state: 'NSW', country: 'AU', lat: -33.8917, lon: 151.1378, timezone: 'Australia/Sydney' },
+                    { suburb: 'Melbourne', state: 'VIC', country: 'AU', lat: -37.8136, lon: 144.9631, timezone: 'Australia/Melbourne' },
+                    { suburb: 'Adelaide', state: 'SA', country: 'AU', lat: -34.9285, lon: 138.6007, timezone: 'Australia/Adelaide' },
+                    { suburb: 'Perth', state: 'WA', country: 'AU', lat: -31.9505, lon: 115.8605, timezone: 'Australia/Perth' },
+                    { suburb: 'Auckland', state: 'NZ', country: 'NZ', lat: -36.8485, lon: 174.7633, timezone: 'Pacific/Auckland' }
                   ].map(place => (
                     <button
                       key={place.suburb}
                       type="button"
-                      onClick={() => {
-                        const tzRes = resolveClosestTimezone({
-                          lat: place.lat,
-                          lon: place.lon,
-                          suburb: place.suburb,
-                          state: place.state,
-                          date: currentTime
-                        });
-                        setDraft(prev => ({
-                          ...prev,
-                          suburb: place.suburb,
-                          state: place.state,
-                          lat: place.lat,
-                          lon: place.lon,
-                          timezone: tzRes.timezone
-                        }));
-                        setDetectStatus(`Selected ${place.suburb}, ${place.state} • ${tzRes.description}`);
-                      }}
+                      data-agent-id={`geo-quick-${place.suburb.toLowerCase().replace(/\s+/g, '-')}`}
+                      data-testid={`geo-quick-${place.suburb.toLowerCase().replace(/\s+/g, '-')}`}
+                      onClick={() => handleSelectPlace(place)}
                       style={{
                         fontSize: '0.65rem',
                         padding: '2px 6px',
@@ -596,7 +837,8 @@ export default function GeoTimeWidget() {
                         border: '1px solid rgba(255, 255, 255, 0.1)',
                         borderRadius: '4px',
                         color: '#e2e8f0',
-                        cursor: 'pointer'
+                        cursor: 'pointer',
+                        transition: 'border-color 0.15s ease'
                       }}
                     >
                       {place.suburb}, {place.state}

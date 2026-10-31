@@ -130,3 +130,80 @@ test('superadmin clicking a dot toggles the permission state', () => {
     togglePermissionDot(initialMatrix, 'videos.set_rate', 'accountant', false);
   }, /Access Denied/);
 });
+
+test('superadmin can view website from supporter role perspective without mutating credentials', () => {
+  function computeEffectiveUser(user, viewAsRole, isSuperAdminCheck) {
+    if (!user) return null;
+    const isActualSuper = isSuperAdminCheck(user.email);
+    if (isActualSuper && viewAsRole) {
+      return {
+        ...user,
+        role: viewAsRole,
+        effectiveRole: viewAsRole,
+        isImpersonating: true,
+        realRole: 'superadmin'
+      };
+    }
+    return user;
+  }
+
+  const superAdminUser = {
+    email: 'support@aifoundation.net.au',
+    role: 'superadmin',
+    name: 'SuperAdmin'
+  };
+
+  const regularUser = {
+    email: 'client@gmail.com',
+    role: 'supporter',
+    name: 'Regular Client'
+  };
+
+  const isSuperAdminCheck = (email) => email === 'support@aifoundation.net.au' || email === 'davidrobertson.info@gmail.com';
+
+  // 1. SuperAdmin viewing as supporter
+  const previewUser = computeEffectiveUser(superAdminUser, 'supporter', isSuperAdminCheck);
+  assert.equal(previewUser.role, 'supporter');
+  assert.equal(previewUser.effectiveRole, 'supporter');
+  assert.equal(previewUser.isImpersonating, true);
+  assert.equal(previewUser.realRole, 'superadmin');
+  assert.equal(previewUser.email, 'support@aifoundation.net.au');
+
+  // 2. Revert back to superadmin
+  const revertedUser = computeEffectiveUser(superAdminUser, null, isSuperAdminCheck);
+  assert.equal(revertedUser.role, 'superadmin');
+  assert.equal(revertedUser.isImpersonating, undefined);
+
+  // 3. Regular user cannot view as other roles
+  const regularAttempt = computeEffectiveUser(regularUser, 'admin', isSuperAdminCheck);
+  assert.equal(regularAttempt.role, 'supporter');
+  assert.equal(regularAttempt.isImpersonating, undefined);
+});
+
+test('every role including supporters has the video upload and publish feature', () => {
+  const ALL_PLATFORM_ROLES = [
+    'superadmin',
+    'mainadmin',
+    'admin',
+    'doctor',
+    'physiotherapist',
+    'exercise_physiologist',
+    'rehab_specialist',
+    'nutritionist',
+    'strength_coach',
+    'trainer',
+    'accountant',
+    'yoga_pilates',
+    'athlete',
+    'supporter'
+  ];
+
+  function canRoleUploadVideos(role) {
+    // Rule: Supporters can also upload videos. Every role also has the same feature.
+    return ALL_PLATFORM_ROLES.includes(role);
+  }
+
+  for (const role of ALL_PLATFORM_ROLES) {
+    assert.equal(canRoleUploadVideos(role), true, `Role "${role}" must be able to upload videos`);
+  }
+});

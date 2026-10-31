@@ -14,6 +14,7 @@ import {
 } from './Icons';
 import { askCoachDavidAi } from '../utils/geminiAi';
 import { videoLibrary } from '../data/videos';
+import { INITIAL_SOCIAL_POSTS } from '../data/socialPosts';
 
 const SUGGESTED_PROMPTS = [
   "🔥 Recommend an upper body hypertrophy workout",
@@ -96,14 +97,14 @@ Ask me anything about exercise technique, muscle programming, nutrition, or inju
     }
   };
 
-  // Helper to parse [VIDEO:id:title] tokens in AI message text
+  // Helper to parse [VIDEO:id:title] and [POST:id:title] tokens in AI message text
   const renderMessageContent = (text) => {
-    const videoRegex = /\[VIDEO:([a-zA-Z0-9_-]{11}):([^\]]+)\]/g;
+    const tokenRegex = /\[(VIDEO|POST):([a-zA-Z0-9_-]+):([^\]]+)\]/g;
     const parts = [];
     let lastIndex = 0;
     let match;
 
-    while ((match = videoRegex.exec(text)) !== null) {
+    while ((match = tokenRegex.exec(text)) !== null) {
       if (match.index > lastIndex) {
         parts.push({
           type: 'text',
@@ -111,16 +112,27 @@ Ask me anything about exercise technique, muscle programming, nutrition, or inju
         });
       }
 
-      const videoId = match[1];
-      const videoTitle = match[2];
-      const videoObj = videoLibrary.find(v => v.id === videoId);
+      const kind = match[1];
+      const targetId = match[2];
+      const title = match[3];
 
-      parts.push({
-        type: 'video',
-        videoId,
-        videoTitle,
-        videoObj
-      });
+      if (kind === 'VIDEO') {
+        const videoObj = videoLibrary.find(v => v.id === targetId);
+        parts.push({
+          type: 'video',
+          videoId: targetId,
+          videoTitle: title,
+          videoObj
+        });
+      } else {
+        const postObj = INITIAL_SOCIAL_POSTS.find(p => p.id === targetId);
+        parts.push({
+          type: 'post',
+          postId: targetId,
+          postTitle: title,
+          postObj
+        });
+      }
 
       lastIndex = match.index + match[0].length;
     }
@@ -198,6 +210,59 @@ Ask me anything about exercise technique, muscle programming, nutrition, or inju
 
                 <span className="badge badge-orange" style={{ fontSize: '0.7rem', flexShrink: 0 }}>
                   Watch Tutorial
+                </span>
+              </div>
+            );
+          }
+
+          if (p.type === 'post') {
+            return (
+              <div 
+                key={idx}
+                style={{
+                  margin: '0.85rem 0',
+                  background: 'rgba(235, 94, 40, 0.08)',
+                  border: '1px solid rgba(235, 94, 40, 0.35)',
+                  borderRadius: '12px',
+                  padding: '0.65rem 0.85rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.75rem',
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                <div style={{ position: 'relative', width: '64px', height: '42px', flexShrink: 0, borderRadius: '6px', overflow: 'hidden' }}>
+                  <img 
+                    src={p.postObj?.thumbnailUrl || 'https://images.unsplash.com/photo-1517838277536-f5f99be501cd?w=400'} 
+                    alt={p.postTitle}
+                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                  />
+                  <div style={{
+                    position: 'absolute',
+                    inset: 0,
+                    background: 'rgba(0,0,0,0.35)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '0.65rem',
+                    color: '#fff',
+                    fontWeight: 800
+                  }}>
+                    {p.postObj?.platform === 'instagram' ? 'IG' : 'FB'}
+                  </div>
+                </div>
+
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: '0.7rem', color: '#ff9e40', fontWeight: 800, textTransform: 'uppercase' }}>
+                    Creator Post (1 Token to View)
+                  </div>
+                  <div style={{ fontSize: '0.84rem', fontWeight: 700, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {p.postTitle}
+                  </div>
+                </div>
+
+                <span className="badge badge-orange" style={{ fontSize: '0.7rem', flexShrink: 0 }}>
+                  1 Token
                 </span>
               </div>
             );

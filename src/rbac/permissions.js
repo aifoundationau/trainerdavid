@@ -17,7 +17,11 @@ export const DEFAULT_ROLE = 'supporter';
 
 // Owner accounts recognized across all AI Foundation applications
 export const SUPERADMIN_UIDS = ['ZK79FRQoVlYhsgvMibhi81dRUWj2', 'L5euSJAfNKdDOX6mT0qmrCGjUA53'];
-export const SUPERADMIN_EMAILS = ['davidrobertson.info@gmail.com', 'support@aifoundation.net.au'];
+export const SUPERADMIN_EMAILS = [
+  'support@aifoundation.net.au',
+  'davidrobertson.info@gmail.com',
+  'david@aifoundation.com.au'
+];
 
 export function isOwnerAccount({ uid, email, emailVerified } = {}) {
   return SUPERADMIN_UIDS.includes(uid) ||
@@ -245,14 +249,16 @@ export const BASELINE_ROLE_PERMISSIONS = {
     'tokens.spend'
   ],
   accountant: [
+    'videos.view', 'videos.unlock', 'videos.manage',
     'tokens.grant', 'finance.view', 'stripe.audit', 'users.manage'
   ],
   athlete: [
-    'videos.view', 'videos.unlock',
+    'videos.view', 'videos.unlock', 'videos.manage',
     'consultations.book', 'nutrition.view', 'tokens.spend'
   ],
   supporter: [
-    'videos.view', 'videos.unlock', 'consultations.book', 'tokens.spend'
+    'videos.view', 'videos.unlock', 'videos.manage',
+    'consultations.book', 'tokens.spend'
   ],
 };
 

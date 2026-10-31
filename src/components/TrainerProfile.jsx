@@ -116,7 +116,7 @@ export default function TrainerProfile({ onOpenConsultation }) {
               </h2>
 
               <p style={{ fontSize: '1.02rem', color: 'var(--text-secondary)', lineHeight: 1.7, marginBottom: '1.25rem' }}>
-                Welcome! I created <strong style={{ color: '#fff' }}>Trainer David</strong> to give people access to elite personal training and physiotherapy-informed exercise instruction without confusion, dangerous bro-science, or overpriced gym memberships.
+                Welcome! I created <strong style={{ color: '#fff' }}>Trainer David</strong> to give people access to elite personal training and structured conditioning (including Pilates, Yoga & Aerobics) without confusion, dangerous bro-science, or overpriced gym memberships.
               </p>
 
               <p style={{ fontSize: '0.96rem', color: 'var(--text-secondary)', lineHeight: 1.7, marginBottom: '2rem' }}>
@@ -141,8 +141,8 @@ export default function TrainerProfile({ onOpenConsultation }) {
                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.65rem' }}>
                   <CheckCircle size={20} color="var(--accent-lime)" style={{ flexShrink: 0, marginTop: '2px' }} />
                   <div>
-                    <div style={{ fontWeight: 700, color: '#fff', fontSize: '0.92rem' }}>Physiotherapy Protocols</div>
-                    <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Rehab kinetic chains and build posture durability.</div>
+                    <div style={{ fontWeight: 700, color: '#fff', fontSize: '0.92rem' }}>Group Conditioning & Studio Fitness</div>
+                    <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Core stability, mobility & endurance with Pilates, Yoga & Aerobics.</div>
                   </div>
                 </div>
 

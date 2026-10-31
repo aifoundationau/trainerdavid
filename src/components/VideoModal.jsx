@@ -1,5 +1,8 @@
-import React, { useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Play, CheckCircle2, ShieldCheck, Dumbbell, Sparkles, Check, Lock, Coins, Google, ExternalLink } from './Icons';
+import { sendMessageToCreator } from '../services/trainerApi';
+import { isUserSuperAdmin } from '../data/adminStore';
+import { getLocalSystemSettings } from '../services/systemSettings';
 
 export default function VideoModal({ 
   video, 
@@ -10,8 +13,15 @@ export default function VideoModal({
   onClose, 
   onOpenConsultation,
   onOpenAuth,
-  onGoToAdminTokens
+  onGoToAdminTokens,
+  onTokensChanged
 }) {
+  const [showMessageForm, setShowMessageForm] = useState(false);
+  const [messageText, setMessageText] = useState('');
+  const [isSendingMessage, setIsSendingMessage] = useState(false);
+  const [messageSuccess, setMessageSuccess] = useState('');
+  const [messageError, setMessageError] = useState('');
+
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') onClose();
@@ -22,7 +32,41 @@ export default function VideoModal({
 
   if (!video) return null;
 
-  const canPlay = isUnlocked || isSubscriber;
+  // SuperAdmin master rule: superadmin can do everything on this website without tokens
+  // System Toggle rule: When Token System is OFF, no tokens anywhere
+  const isSuperAdmin = user ? (isUserSuperAdmin(user.email) && !user.isImpersonating) : false;
+  const isTokenSystemOff = !getLocalSystemSettings().isTokenSystemEnabled;
+  const isFree = Number(video?.tokenCost) === 0 || isTokenSystemOff;
+  const messageFee = (isSuperAdmin || isTokenSystemOff) ? 0 : (Number.isInteger(Number(video?.messageTokenCost)) ? Math.max(0, Number(video.messageTokenCost)) : 1);
+  const canPlay = isSuperAdmin || isUnlocked || isSubscriber || isFree || isTokenSystemOff;
+
+  const handleSendMessage = async (e) => {
+    e.preventDefault();
+    if (!messageText.trim()) {
+      setMessageError('Please enter a message for the creator.');
+      return;
+    }
+    // SuperAdmin rule: the superadmin can do everything on this website without tokens
+    if (!isSuperAdmin && messageFee > 0 && (tokens || 0) < messageFee) {
+      setMessageError(`You need at least ${messageFee} token${messageFee > 1 ? 's' : ''} to message the creator.`);
+      return;
+    }
+    setIsSendingMessage(true);
+    setMessageError('');
+    setMessageSuccess('');
+    try {
+      const res = await sendMessageToCreator({ videoId: video.id, message: messageText });
+      setMessageSuccess(res.message || 'Message delivered to creator!');
+      setMessageText('');
+      if (!isSuperAdmin && typeof onTokensChanged === 'function' && typeof res.balance === 'number') {
+        onTokensChanged(res.balance);
+      }
+    } catch (err) {
+      setMessageError(err.message || 'Failed to send message.');
+    } finally {
+      setIsSendingMessage(false);
+    }
+  };
 
   return (
     <div 
@@ -229,6 +273,122 @@ export default function VideoModal({
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+
+          {/* Unlock notice for messaging when locked */}
+          {!canPlay && (
+            <div 
+              data-testid="message-creator-locked-notice"
+              style={{
+                background: 'rgba(255, 107, 0, 0.05)',
+                border: '1px dashed rgba(255, 107, 0, 0.35)',
+                borderRadius: '12px',
+                padding: '0.85rem 1.15rem',
+                marginBottom: '1.25rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.65rem'
+              }}
+            >
+              <Lock size={16} color="var(--accent-orange)" style={{ flexShrink: 0 }} />
+              <div style={{ fontSize: '0.88rem', color: '#ffbe8a' }}>
+                <strong style={{ color: '#fff' }}>Creator Q&A:</strong> You must unlock this video before you can message the creator.
+              </div>
+            </div>
+          )}
+
+          {/* Message Creator (1 Token, or 0 tokens for SuperAdmin) */}
+          {canPlay && (
+            <div style={{
+              background: isSuperAdmin ? 'rgba(34, 197, 94, 0.06)' : 'rgba(255, 107, 0, 0.05)',
+              border: isSuperAdmin ? '1px solid rgba(34, 197, 94, 0.3)' : '1px solid rgba(255, 107, 0, 0.25)',
+              borderRadius: '14px',
+              padding: '1rem 1.25rem',
+              marginBottom: '1.25rem'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.65rem' }}>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', fontSize: '0.92rem', fontWeight: 800, color: '#fff' }}>
+                    <Coins size={16} color={isSuperAdmin || messageFee === 0 ? '#22c55e' : '#f59e0b'} />
+                    <span>{isSuperAdmin ? 'Message Creator (Free • SuperAdmin Master Access)' : (messageFee === 0 ? 'Message Creator (Free)' : `Message Creator for ${messageFee} Token${messageFee > 1 ? 's' : ''}`)}</span>
+                  </div>
+                  <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                    {isSuperAdmin 
+                      ? 'SuperAdmin master access: You can test and message any creator with 0 tokens spent.' 
+                      : (messageFee === 0 
+                          ? `Direct messaging with ${video.author || 'the creator'} is free for this video.`
+                          : `People who unlock this video can directly message ${video.author || 'the creator'} for ${messageFee} token${messageFee > 1 ? 's' : ''}.`)}
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowMessageForm(!showMessageForm);
+                    setMessageError('');
+                    setMessageSuccess('');
+                  }}
+                  className="btn-secondary"
+                  style={{
+                    padding: '0.42rem 0.9rem',
+                    fontSize: '0.8rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.4rem',
+                    background: showMessageForm ? 'var(--accent-orange)' : 'rgba(255, 255, 255, 0.06)',
+                    color: '#fff',
+                    borderColor: showMessageForm ? 'var(--accent-orange)' : 'var(--border-subtle)'
+                  }}
+                >
+                  <Coins size={13} color={isSuperAdmin || messageFee === 0 ? '#22c55e' : '#f59e0b'} />
+                  <span>{showMessageForm ? 'Cancel Message' : (isSuperAdmin || messageFee === 0 ? 'Message Creator (Free)' : `Message Creator (${messageFee} Token${messageFee > 1 ? 's' : ''})`)}</span>
+                </button>
+              </div>
+
+              {showMessageForm && (
+                <form onSubmit={handleSendMessage} style={{ marginTop: '0.9rem' }}>
+                  <textarea
+                    rows={3}
+                    placeholder={`Ask ${video.author || 'the coach'} a question about this workout, biomechanics adjustments, or cues...`}
+                    value={messageText}
+                    onChange={e => setMessageText(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '0.65rem 0.85rem',
+                      background: '#0d111c',
+                      border: '1px solid var(--border-subtle)',
+                      borderRadius: '8px',
+                      color: '#fff',
+                      fontSize: '0.88rem',
+                      resize: 'vertical'
+                    }}
+                  />
+
+                  {messageError && (
+                    <div style={{ color: '#f87171', fontSize: '0.8rem', marginTop: '0.4rem' }}>
+                      {messageError}
+                    </div>
+                  )}
+
+                  {messageSuccess && (
+                    <div style={{ color: '#22c55e', fontSize: '0.8rem', marginTop: '0.4rem' }}>
+                      ✓ {messageSuccess}
+                    </div>
+                  )}
+
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.6rem', gap: '0.5rem' }}>
+                    <button
+                      type="submit"
+                      disabled={isSendingMessage}
+                      className="btn-primary"
+                      style={{ padding: '0.45rem 1.1rem', fontSize: '0.82rem' }}
+                    >
+                      {isSendingMessage ? 'Sending…' : (isSuperAdmin || messageFee === 0 ? 'Send Question (Free)' : `Send Question (${messageFee} Token${messageFee > 1 ? 's' : ''})`)}
+                    </button>
+                  </div>
+                </form>
+              )}
             </div>
           )}
 

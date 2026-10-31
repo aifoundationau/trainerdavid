@@ -9,7 +9,8 @@ if (!getApps().length) {
 }
 
 export const adminAuth = getAuth();
-export const db = getFirestore();
+const databaseId = process.env.FIRESTORE_DATABASE_ID || 'trainerdavid';
+export const db = getFirestore(databaseId);
 
 // Keep in sync with isSuperAdmin() in the Firestore security rules
 const SUPERADMIN_UIDS = ['ZK79FRQoVlYhsgvMibhi81dRUWj2', 'L5euSJAfNKdDOX6mT0qmrCGjUA53'];

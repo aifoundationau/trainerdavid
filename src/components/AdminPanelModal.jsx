@@ -734,7 +734,7 @@ export default function AdminPanelModal({ isOpen, onClose, onRefreshAppState, us
 
               {/* Service Filter Tabs */}
               <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.25rem', flexWrap: 'wrap' }}>
-                {['All', '1-on-1 Online Personal Training', 'Nutrition & Macro Blueprint', 'Sports Performance Coaching', 'Physiotherapy & Rehab Assessment'].map(filterItem => {
+                {['All', '1-on-1 Online Personal Training', 'Nutrition & Macro Blueprint', 'Sports Performance Coaching', 'Group Fitness & Studio Conditioning'].map(filterItem => {
                   const isActive = bookingFilter === filterItem;
                   const label = filterItem === 'All' ? 'All Services' : filterItem.split(' ')[0] + ' ' + (filterItem.split(' ')[1] || '');
                   return (
@@ -808,7 +808,7 @@ export default function AdminPanelModal({ isOpen, onClose, onRefreshAppState, us
                       <option value="1-on-1 Online Personal Training">1-on-1 Online Personal Training</option>
                       <option value="Nutrition & Macro Blueprint">Nutrition & Macro Blueprint</option>
                       <option value="Sports Performance Coaching">Sports Performance Coaching</option>
-                      <option value="Physiotherapy & Rehab Assessment">Physiotherapy & Rehab Assessment</option>
+                      <option value="Group Fitness & Studio Conditioning">Group Fitness & Studio Conditioning (Pilates, Yoga, Aerobics)</option>
                     </select>
                   </div>
 

@@ -46,18 +46,18 @@ export const servicesData = [
     ]
   },
   {
-    id: "physiotherapy",
-    title: "Physiotherapy & Rehab Assessment",
-    badge: "Injury Prevention",
-    category: "Physiotherapy",
-    icon: "Activity",
-    tagline: "Overcome nagging joint pain, mobility blocks & posture faults",
-    description: "Comprehensive biomechanical audit of your joints, kinetic chains, and movement restrictions to rehabilitate old injuries and build a pain-free, resilient body.",
+    id: "group-fitness",
+    title: "Group Fitness & Studio Conditioning",
+    badge: "Pilates • Yoga • Aerobics",
+    category: "Group Conditioning",
+    icon: "Heart",
+    tagline: "Structured physical conditioning: Pilates, Yoga & Aerobics",
+    description: "Structured physical conditioning blending Pilates core control, dynamic yoga mobility sequences, and high-energy aerobics for full-body balance, endurance, and longevity.",
     features: [
-      "Full kinetic chain & posture imbalance diagnosis",
-      "Joint decompression & active mobility routines",
-      "Corrective exercise prescribing for shoulders, knees, & spine",
-      "Safe return-to-heavy-lifting ramp protocols"
+      "Pilates core stabilization, pelvic alignment & spinal articulation",
+      "Dynamic yoga mobility sequences, breathwork & active recovery",
+      "High-energy aerobic conditioning & cardiovascular endurance",
+      "Structured group exercise & studio fitness class programming"
     ]
   }
 ];

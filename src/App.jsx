@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import Navbar from './components/Navbar';
 import Hero from './components/Hero';
 import VideoGrid from './components/VideoGrid';
@@ -13,17 +13,18 @@ import AdminPage from './components/AdminPage';
 import CoachDavidAiModal from './components/CoachDavidAiModal';
 import GeoTimeWidget from './components/GeoTimeWidget';
 import TrainerApplicationModal from './components/TrainerApplicationModal';
+import SocialPage from './components/SocialPage';
 import { Flame, Sparkles, X, Coins, CheckCircle2 } from './components/Icons';
 import { getStoredUser, setStoredUser, clearStoredUser } from './utils/googleAuth';
 import { auth, onAuthStateChanged, logoutUser } from './firebase';
 import { syncUserProfile, toAppRole } from './services/userDirectory';
 import { spendTokens, grantTokens, claimStripeSession } from './services/tokenApi';
 import { unlockVideoWithSplit, fetchMyUnlockedVideos } from './services/trainerApi';
-import { registerOrUpdateGoogleUser, addAdminPurchase, getRegisteredUsers } from './data/adminStore';
+import { registerOrUpdateGoogleUser, addAdminPurchase, getRegisteredUsers, isUserSuperAdmin } from './data/adminStore';
 
 export default function App() {
   const [user, setUser] = useState(() => getStoredUser());
-  const [currentView, setCurrentView] = useState('public'); // 'public' | 'admin'
+  const [currentView, setCurrentView] = useState('public'); // 'public' | 'admin' | 'social'
   const [adminTab, setAdminTab] = useState('tokens'); // 'tokens' | 'users' | 'purchases'
   const [tokens, setTokens] = useState(() => {
     const savedUser = getStoredUser();
@@ -45,6 +46,23 @@ export default function App() {
       return [];
     }
   }); // Lifetime unlocked video IDs
+  const [unlockedPostIds, setUnlockedPostIds] = useState(() => {
+    try {
+      const saved = localStorage.getItem('trainer_david_unlocked_posts');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const handleUnlockSocialSuccess = (postId) => {
+    setUnlockedPostIds(prev => {
+      if (prev.includes(postId)) return prev;
+      const next = [...prev, postId];
+      localStorage.setItem('trainer_david_unlocked_posts', JSON.stringify(next));
+      return next;
+    });
+  };
   const [activeVideo, setActiveVideo] = useState(null);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [isConsultationOpen, setIsConsultationOpen] = useState(false);
@@ -52,6 +70,44 @@ export default function App() {
   const [isTrainerAppModalOpen, setIsTrainerAppModalOpen] = useState(false);
   const [selectedService, setSelectedService] = useState('1-on-1 Online Personal Training');
   const [toastMessage, setToastMessage] = useState(null);
+
+  // SuperAdmin Role Impersonation / View-as Mode
+  const [viewAsRole, setViewAsRole] = useState(() => {
+    try {
+      return localStorage.getItem('trainer_david_view_as_role') || null;
+    } catch {
+      return null;
+    }
+  });
+
+  const isActualSuperAdmin = isUserSuperAdmin(user?.email);
+
+  const handleSetViewAsRole = (role) => {
+    if (!isActualSuperAdmin) return;
+    if (!role || role === 'superadmin') {
+      setViewAsRole(null);
+      try { localStorage.removeItem('trainer_david_view_as_role'); } catch {}
+      showToast('Reverted to Master SuperAdmin View.');
+    } else {
+      setViewAsRole(role);
+      try { localStorage.setItem('trainer_david_view_as_role', role); } catch {}
+      showToast(`Viewing Trainer David as ${role.toUpperCase()} (Preview Mode).`);
+    }
+  };
+
+  const effectiveUser = useMemo(() => {
+    if (!user) return null;
+    if (isActualSuperAdmin && viewAsRole) {
+      return {
+        ...user,
+        role: viewAsRole,
+        effectiveRole: viewAsRole,
+        isImpersonating: true,
+        realRole: 'superadmin'
+      };
+    }
+    return user;
+  }, [user, isActualSuperAdmin, viewAsRole]);
 
   const showToast = (msg) => {
     setToastMessage(msg);
@@ -126,9 +182,8 @@ export default function App() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (fbUser) => {
       if (fbUser) {
-        // Restore an existing #pt member's session from the verified Firebase identity.
-        // New users finish registration in the AuthModal flow instead.
-        applyFirestoreProfile(fbUser, { register: false });
+        // Automatically sync & ensure profile in Firestore as a supporter immediately
+        applyFirestoreProfile(fbUser, { register: true });
       } else {
         if (getStoredUser()?.provider === 'firebase') {
           // Firebase session ended (signed out or expired): drop the stored Google session.
@@ -406,8 +461,54 @@ export default function App() {
   if (currentView === 'admin' && user) {
     return (
       <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+        {/* SuperAdmin Role Impersonation / Preview Banner */}
+        {isActualSuperAdmin && viewAsRole && (
+          <div 
+            data-testid="superadmin-preview-banner"
+            style={{
+              position: 'sticky',
+              top: 0,
+              zIndex: 99999,
+              background: 'linear-gradient(90deg, #7c2d12 0%, #b45309 100%)',
+              borderBottom: '1px solid rgba(245, 158, 11, 0.4)',
+              padding: '0.45rem 1.25rem',
+              color: '#fff',
+              fontSize: '0.82rem',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: '0.65rem',
+              boxShadow: '0 4px 15px rgba(0,0,0,0.45)'
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+              <span style={{ fontSize: '1.1rem' }}>👁️</span>
+              <span>
+                <strong>SuperAdmin Role Preview:</strong> Currently viewing site features, UI, and permissions as <strong style={{ color: '#fef08a', textTransform: 'capitalize' }}>{viewAsRole}</strong>.
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => handleSetViewAsRole(null)}
+              style={{
+                background: 'rgba(0, 0, 0, 0.45)',
+                border: '1px solid rgba(255, 255, 255, 0.35)',
+                borderRadius: '6px',
+                color: '#fff',
+                padding: '0.25rem 0.75rem',
+                fontSize: '0.78rem',
+                fontWeight: 800,
+                cursor: 'pointer'
+              }}
+            >
+              ✕ Revert to SuperAdmin View
+            </button>
+          </div>
+        )}
+
         <AdminPage 
-          user={user}
+          user={effectiveUser}
           tokens={tokens}
           onAddTokens={handleAddTokens}
           onLogout={handleLogout}
@@ -417,6 +518,8 @@ export default function App() {
           }}
           initialTab={adminTab}
           onRefreshAppState={refreshAppStateFromStore}
+          viewAsRole={viewAsRole}
+          onSetViewAsRole={handleSetViewAsRole}
         />
 
         {/* Video Modal if active */}
@@ -425,7 +528,7 @@ export default function App() {
             video={activeVideo}
             isUnlocked={unlockedVideoIds.includes(activeVideo.id)}
             isSubscriber={isSubscriber}
-            user={user}
+            user={effectiveUser}
             tokens={tokens}
             onClose={() => setActiveVideo(null)}
             onOpenConsultation={handleOpenConsultation}
@@ -434,6 +537,7 @@ export default function App() {
               setActiveVideo(null);
               setAdminTab('tokens');
             }}
+            onTokensChanged={(newBalance) => setTokens(newBalance)}
           />
         )}
 
@@ -448,7 +552,7 @@ export default function App() {
         <CoachDavidAiModal 
           isOpen={isAiChatOpen}
           onClose={() => setIsAiChatOpen(false)}
-          user={user}
+          user={effectiveUser}
           onSelectVideo={handleWatchVideo}
           onOpenConsultation={handleOpenConsultation}
         />
@@ -462,6 +566,52 @@ export default function App() {
   // Public View
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+
+      {/* SuperAdmin Role Impersonation / Preview Banner */}
+      {isActualSuperAdmin && viewAsRole && (
+        <div 
+          data-testid="superadmin-preview-banner"
+          style={{
+            position: 'sticky',
+            top: 0,
+            zIndex: 99999,
+            background: 'linear-gradient(90deg, #7c2d12 0%, #b45309 100%)',
+            borderBottom: '1px solid rgba(245, 158, 11, 0.4)',
+            padding: '0.45rem 1.25rem',
+            color: '#fff',
+            fontSize: '0.82rem',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: '0.65rem',
+            boxShadow: '0 4px 15px rgba(0,0,0,0.45)'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+            <span style={{ fontSize: '1.1rem' }}>👁️</span>
+            <span>
+              <strong>SuperAdmin Role Preview:</strong> Currently viewing site features, UI, and permissions as <strong style={{ color: '#fef08a', textTransform: 'capitalize' }}>{viewAsRole}</strong>.
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => handleSetViewAsRole(null)}
+            style={{
+              background: 'rgba(0, 0, 0, 0.45)',
+              border: '1px solid rgba(255, 255, 255, 0.35)',
+              borderRadius: '6px',
+              color: '#fff',
+              padding: '0.25rem 0.75rem',
+              fontSize: '0.78rem',
+              fontWeight: 800,
+              cursor: 'pointer'
+            }}
+          >
+            ✕ Revert to SuperAdmin View
+          </button>
+        </div>
+      )}
 
       {/* Floating Notification Toast */}
       {toastMessage && (
@@ -492,15 +642,22 @@ export default function App() {
 
       {/* Navigation with Google Authentication & Admin Portal Link */}
       <Navbar 
-        user={user}
+        user={effectiveUser}
         onOpenAuth={() => setIsAuthOpen(true)}
         onLogout={handleLogout}
-        onOpenAdmin={() => handleOpenAdmin('tokens')}
+        onOpenAdmin={(tab) => handleOpenAdmin(tab || 'tokens')}
         tokens={tokens}
         onOpenTokenStore={handleOpenTokenStore}
         onOpenConsultation={() => handleOpenConsultation('1-on-1 Online Personal Training')}
         onOpenAiChat={() => setIsAiChatOpen(true)}
+        viewAsRole={viewAsRole}
+        onSetViewAsRole={handleSetViewAsRole}
         onOpenTrainerApplication={() => setIsTrainerAppModalOpen(true)}
+        currentView={currentView}
+        onOpenSocial={() => {
+          setCurrentView('social');
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }}
         onGoHome={() => {
           setCurrentView('public');
           setActiveVideo(null);
@@ -514,29 +671,53 @@ export default function App() {
 
       {/* Main Content */}
       <main style={{ flex: 1 }}>
-        <Hero 
-          onExploreWorkouts={scrollToWorkouts}
-          onOpenTokenStore={handleOpenTokenStore}
-          onOpenConsultation={() => handleOpenConsultation('1-on-1 Online Personal Training')}
-        />
+        {currentView === 'social' ? (
+          <SocialPage 
+            user={effectiveUser}
+            tokens={tokens}
+            unlockedPostIds={unlockedPostIds}
+            onUnlockSuccess={handleUnlockSocialSuccess}
+            onTokensChanged={(newBal) => setTokens(newBal)}
+            onOpenAuth={() => setIsAuthOpen(true)}
+            onGoHome={() => {
+              setCurrentView('public');
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
+            onOpenTokenStore={handleOpenTokenStore}
+          />
+        ) : (
+          <>
+            <Hero 
+              onExploreWorkouts={scrollToWorkouts}
+              onOpenTokenStore={handleOpenTokenStore}
+              onOpenConsultation={() => handleOpenConsultation('1-on-1 Online Personal Training')}
+            />
 
-        <VideoGrid 
-          onSelectVideo={handleWatchVideo}
-          tokens={tokens}
-          unlockedVideoIds={unlockedVideoIds}
-          user={user}
-          isSubscriber={isSubscriber}
-        />
+            <VideoGrid 
+              onSelectVideo={handleWatchVideo}
+              tokens={tokens}
+              unlockedVideoIds={unlockedVideoIds}
+              user={effectiveUser}
+              isSubscriber={isSubscriber}
+              unlockedPostIds={unlockedPostIds}
+              onUnlockSocialSuccess={handleUnlockSocialSuccess}
+              onTokensChanged={(newBalance) => setTokens(newBalance)}
+              onOpenAuth={() => setIsAuthOpen(true)}
+              onOpenSocial={() => {
+                setCurrentView('social');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+            />
 
+            <ServicesSection 
+              onBookService={(serviceTitle) => handleOpenConsultation(serviceTitle)}
+            />
 
-
-        <ServicesSection 
-          onBookService={(serviceTitle) => handleOpenConsultation(serviceTitle)}
-        />
-
-        <TrainerProfile 
-          onOpenConsultation={handleOpenConsultation}
-        />
+            <TrainerProfile 
+              onOpenConsultation={handleOpenConsultation}
+            />
+          </>
+        )}
       </main>
 
       {/* Footer */}
@@ -567,6 +748,7 @@ export default function App() {
             setAdminTab('tokens');
             setCurrentView('admin');
           }}
+          onTokensChanged={(newBalance) => setTokens(newBalance)}
         />
       )}
 

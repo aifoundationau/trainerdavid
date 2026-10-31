@@ -50,7 +50,7 @@ export default function Hero({ onExploreWorkouts, onOpenTokenStore, onOpenConsul
             marginBottom: '2rem',
             maxWidth: '560px'
           }}>
-            Master every lift with pinpoint anatomical form. Stream 31+ high-yield instructional videos, unlock custom nutrition plans, receive 1-on-1 sports coaching, and get physiotherapy-backed injury rehab.
+            Master every lift with pinpoint anatomical form. Stream 31+ high-yield instructional videos, unlock custom nutrition plans, receive 1-on-1 sports coaching, and join structured studio conditioning (Pilates, Yoga & Aerobics).
           </p>
 
           {/* Call to action buttons */}

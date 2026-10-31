@@ -1,12 +1,13 @@
 import React from 'react';
-import { Dumbbell, Utensils, Zap, Activity, Check, ArrowRight } from './Icons';
+import { Dumbbell, Utensils, Zap, Activity, Heart, Check, ArrowRight } from './Icons';
 import { servicesData } from '../data/services';
 
 const iconMap = {
   Dumbbell: Dumbbell,
   Utensils: Utensils,
   Zap: Zap,
-  Activity: Activity
+  Activity: Activity,
+  Heart: Heart
 };
 
 export default function ServicesSection({ onBookService }) {
@@ -26,10 +27,10 @@ export default function ServicesSection({ onBookService }) {
             marginBottom: '0.85rem',
             color: '#fff'
           }}>
-            PERSONAL TRAINING, NUTRITION & PHYSIOTHERAPY
+            PERSONAL TRAINING, NUTRITION & GROUP CONDITIONING
           </h2>
           <p style={{ fontSize: '1rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-            Beyond instructional videos, get tailored support customized specifically to your physique, biomechanics, recovery needs, and lifestyle.
+            Beyond instructional videos, get tailored support across 1-on-1 coaching, nutrition blueprints, sports performance, and studio fitness conditioning (Pilates, Yoga & Aerobics).
           </p>
         </div>
 

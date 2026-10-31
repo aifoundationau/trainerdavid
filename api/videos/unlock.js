@@ -4,7 +4,7 @@
 // - Trainer receives 50% of the sale price
 // - SuperAdmin receives 50% of the sale price
 // - Atomically records transactions in Firestore users and token_ledger
-import { handler, requireUser, db, HttpError } from '../_lib/firebaseAdmin.js';
+import { handler, requireUser, isSuperAdmin, db, HttpError } from '../_lib/firebaseAdmin.js';
 import { FieldValue } from 'firebase-admin/firestore';
 
 const SUPERADMIN_UID = 'ZK79FRQoVlYhsgvMibhi81dRUWj2';
@@ -19,6 +19,31 @@ export default handler(async (req) => {
   const now = new Date().toISOString();
   const unlockKey = `${viewer.uid}_${videoId}`;
   const unlockRef = db.collection('video_unlocks').doc(unlockKey);
+
+  // SuperAdmin master rule: Superadmin can do everything on this website without tokens
+  const viewerIsSuperAdmin = isSuperAdmin(viewer) || viewer.uid === SUPERADMIN_UID;
+  if (viewerIsSuperAdmin) {
+    await unlockRef.set({
+      uid: viewer.uid,
+      videoId,
+      unlockedAt: now,
+      accessType: 'superadmin_master',
+      tokenCost: 0
+    });
+    await db.collection('users').doc(viewer.uid).update({
+      unlocked_videos: FieldValue.arrayUnion(videoId),
+      updatedAt: now
+    });
+    return {
+      status: 'unlocked',
+      videoId,
+      tokenCost: 0,
+      balance: 9999,
+      accessType: 'superadmin_master',
+      lifetimeAccess: true,
+      message: 'Unlocked with SuperAdmin master access (0 tokens spent).'
+    };
+  }
 
   // 1. Check if video has already been unlocked by this viewer
   const existingUnlock = await unlockRef.get();
@@ -43,9 +68,36 @@ export default handler(async (req) => {
   const videoSnap = await db.collection('pt_videos').doc(videoId).get();
   if (videoSnap.exists) {
     const vdata = videoSnap.data();
-    tokenCost = Math.max(1, Math.round(Number(vdata.tokenCost) || 1));
+    tokenCost = Math.max(0, Math.round(Number(vdata.tokenCost !== undefined ? vdata.tokenCost : 1)));
     creatorUid = vdata.creatorUid || null;
     videoTitle = vdata.title || videoTitle;
+  }
+
+  // Free video invariant: If creator chose 0 tokens, video is completely free to view
+  if (tokenCost === 0) {
+    await unlockRef.set({
+      uid: viewer.uid,
+      videoId,
+      creatorUid,
+      unlockedAt: now,
+      accessType: 'free_view',
+      tokenCost: 0
+    });
+    await db.collection('users').doc(viewer.uid).update({
+      unlocked_videos: FieldValue.arrayUnion(videoId),
+      updatedAt: now
+    });
+    const viewerSnap = await db.collection('users').doc(viewer.uid).get();
+    const balance = viewerSnap.get('token_balance') ?? viewerSnap.get('fitTokens') ?? 0;
+    return {
+      status: 'unlocked',
+      videoId,
+      tokenCost: 0,
+      balance: Math.trunc(balance),
+      accessType: 'free_view',
+      lifetimeAccess: true,
+      message: 'Unlocked for free (0 tokens spent).'
+    };
   }
 
   // Run atomic Firestore transaction for 50/50 token split

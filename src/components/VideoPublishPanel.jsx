@@ -2,14 +2,15 @@ import React, { useState } from 'react';
 import { Play, Coins, Plus, CheckCircle2, Film, Sparkles, Clock, Lock } from './Icons';
 import { publishWorkoutVideo, extractVideoMetadata } from '../services/trainerApi';
 
-export default function VideoPublishPanel({ user, showToast, onVideoPublished }) {
+export default function VideoPublishPanel({ user, showToast, onVideoPublished, onExploreWorkouts }) {
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState('Chest & Shoulders');
   const [muscleGroup, setMuscleGroup] = useState('');
   const [equipment, setEquipment] = useState('Dumbbells & Bench');
   const [difficulty, setDifficulty] = useState('Intermediate');
   const [duration, setDuration] = useState('10 mins');
-  const [tokenCost, setTokenCost] = useState(5);
+  const [tokenCost, setTokenCost] = useState(1);
+  const [messageTokenCost, setMessageTokenCost] = useState(1);
   const [videoUrl, setVideoUrl] = useState('');
   const [thumbnailUrl, setThumbnailUrl] = useState('');
   const [shortDescription, setShortDescription] = useState('');
@@ -88,11 +89,16 @@ export default function VideoPublishPanel({ user, showToast, onVideoPublished })
       return;
     }
     if (!videoUrl.trim()) {
-      setError('Please provide a YouTube URL or video embed link.');
+      setError('Please provide a YouTube URL.');
+      return;
+    }
+    const ytMatch = videoUrl.trim().match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=|shorts\/))([\w-]{11})/i);
+    if (!ytMatch) {
+      setError('Only YouTube videos are allowed. Please enter a valid YouTube video link (e.g. https://www.youtube.com/watch?v=...).');
       return;
     }
 
-    const price = Math.max(1, Math.round(Number(tokenCost) || 1));
+    const price = Math.max(0, Math.round(Number(tokenCost !== undefined ? tokenCost : 1)));
     setError('');
     setIsPublishing(true);
 
@@ -105,13 +111,16 @@ export default function VideoPublishPanel({ user, showToast, onVideoPublished })
         difficulty,
         duration: duration.trim() || '10 mins',
         tokenCost: price,
+        messageTokenCost: Math.max(0, Math.round(Number(messageTokenCost !== undefined ? messageTokenCost : 1))),
         videoUrl: videoUrl.trim(),
         thumbnailUrl: thumbnailUrl.trim() || undefined,
         shortDescription: shortDescription.trim(),
         keyCues: cues.filter(c => c.trim().length > 0)
       });
 
-      showToast(`🎬 Video "${title}" published live with a ${price} FitToken rate!`);
+      showToast(price === 0 
+        ? `🎬 Video "${title}" published live for FREE viewing!` 
+        : `🎬 Video "${title}" published live with a ${price} FitToken rate!`);
       setTitle('');
       setVideoUrl('');
       setThumbnailUrl('');
@@ -172,6 +181,42 @@ export default function VideoPublishPanel({ user, showToast, onVideoPublished })
       <p style={{ fontSize: '0.86rem', color: 'var(--text-secondary)', margin: '0.35rem 0 1.25rem', lineHeight: 1.5 }}>
         Upload instructional videos to the public workout library. When viewers pay tokens to buy your video, they receive permanent lifetime access to watch it for life, and you receive <strong>50%</strong> of the tokens credited to your account.
       </p>
+
+      {/* Explore Other Videos from Other Creators & Trainers */}
+      <div style={{
+        background: 'rgba(255, 255, 255, 0.03)',
+        border: '1px solid var(--border-subtle)',
+        borderRadius: '12px',
+        padding: '1rem 1.25rem',
+        marginBottom: '1.25rem',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        flexWrap: 'wrap',
+        gap: '1rem'
+      }}>
+        <div style={{ flex: 1, minWidth: '260px' }}>
+          <div style={{ fontSize: '0.74rem', color: 'var(--accent-orange)', fontWeight: 800, letterSpacing: '0.05em' }}>
+            WATCH OTHER VIDEOS FROM OTHER CREATORS AND TRAINERS
+          </div>
+          <div style={{ fontSize: '1.05rem', fontWeight: 900, color: '#fff', margin: '0.2rem 0' }}>
+            EXPLORE 31+ VIDEO WORKOUTS
+          </div>
+          <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.45 }}>
+            Step-by-step biomechanical execution, key cues, and muscle activation. Spend tokens once to own permanent lifetime access. Every video you unlock is yours to watch for life on any device.
+          </div>
+        </div>
+        {onExploreWorkouts && (
+          <button
+            type="button"
+            onClick={onExploreWorkouts}
+            className="btn-secondary"
+            style={{ padding: '0.5rem 1rem', fontSize: '0.82rem', whiteSpace: 'nowrap' }}
+          >
+            Explore 31+ Workouts ↗
+          </button>
+        )}
+      </div>
 
       {/* Mandatory Unlisted YouTube Requirement Notice */}
       <div 
@@ -472,7 +517,7 @@ export default function VideoPublishPanel({ user, showToast, onVideoPublished })
 
             {/* Quick Presets */}
             <div style={{ display: 'flex', gap: '0.35rem' }}>
-              {[1, 2, 5, 10, 15].map(rate => (
+              {[0, 1, 2, 5, 10, 15].map(rate => (
                 <button
                   type="button"
                   key={rate}
@@ -488,7 +533,7 @@ export default function VideoPublishPanel({ user, showToast, onVideoPublished })
                     cursor: 'pointer'
                   }}
                 >
-                  {rate} {rate === 1 ? 'Token' : 'Tokens'}
+                  {rate === 0 ? '0 (Free)' : `${rate} ${rate === 1 ? 'Token' : 'Tokens'}`}
                 </button>
               ))}
             </div>
@@ -499,11 +544,11 @@ export default function VideoPublishPanel({ user, showToast, onVideoPublished })
               id="token-cost-input"
               data-testid="input-token-cost"
               type="number"
-              min="1"
+              min="0"
               max="100"
               step="1"
               value={tokenCost}
-              onChange={e => setTokenCost(Math.max(1, Math.round(Number(e.target.value) || 1)))}
+              onChange={e => setTokenCost(Math.max(0, Math.round(Number(e.target.value) || 0)))}
               style={{
                 width: '120px',
                 padding: '0.55rem 0.75rem',
@@ -517,8 +562,25 @@ export default function VideoPublishPanel({ user, showToast, onVideoPublished })
               }}
             />
 
-            {/* Live 50/50 Split Preview */}
-            <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', flex: 1 }}>
+            {tokenCost === 0 ? (
+              <div style={{
+                background: 'rgba(34, 197, 94, 0.12)',
+                border: '1px solid rgba(34, 197, 94, 0.3)',
+                borderRadius: '8px',
+                padding: '0.55rem 0.85rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                flex: 1
+              }}>
+                <Sparkles size={16} color="#4ade80" />
+                <span style={{ fontSize: '0.82rem', color: '#4ade80', fontWeight: 700 }}>
+                  🎉 FREE TO VIEW: All members can watch this video for 0 tokens!
+                </span>
+              </div>
+            ) : (
+              /* Live 50/50 Split Preview */
+              <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', flex: 1 }}>
               <div style={{
                 background: 'rgba(34, 197, 94, 0.12)',
                 border: '1px solid rgba(34, 197, 94, 0.3)',
@@ -541,6 +603,76 @@ export default function VideoPublishPanel({ user, showToast, onVideoPublished })
                 <strong style={{ color: '#ff6b6b', fontSize: '0.9rem' }}>+{platform50Split} Tokens</strong>
               </div>
             </div>
+          )}
+        </div>
+      </div>
+
+        {/* Creator-Chosen Direct Message Fee */}
+        <div style={{
+          marginBottom: '1.25rem',
+          background: 'rgba(255, 255, 255, 0.02)',
+          padding: '1rem',
+          borderRadius: '10px',
+          border: '1px solid var(--border-subtle)'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+            <div>
+              <label htmlFor="input-message-cost" style={{ fontSize: '0.84rem', color: '#fff', fontWeight: 700, display: 'block' }}>
+                💬 Direct Message Fee for this Video
+              </label>
+              <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>
+                Choose how many FitTokens viewers pay to message you about this video (0 = Free to message).
+              </span>
+            </div>
+            <div style={{ display: 'flex', gap: '0.35rem' }}>
+              {[0, 1, 2, 5, 10].map(rate => (
+                <button
+                  type="button"
+                  key={rate}
+                  onClick={() => setMessageTokenCost(rate)}
+                  style={{
+                    padding: '0.25rem 0.6rem',
+                    borderRadius: '6px',
+                    fontSize: '0.75rem',
+                    fontWeight: 700,
+                    background: messageTokenCost === rate ? 'var(--accent-orange)' : 'rgba(255, 255, 255, 0.05)',
+                    color: messageTokenCost === rate ? '#fff' : 'var(--text-secondary)',
+                    border: '1px solid var(--border-subtle)',
+                    cursor: 'pointer'
+                  }}
+                >
+                  {rate === 0 ? '0 (Free)' : `${rate} ${rate === 1 ? 'Token' : 'Tokens'}`}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <input
+              id="input-message-cost"
+              type="number"
+              min="0"
+              max="100"
+              step="1"
+              value={messageTokenCost}
+              onChange={e => setMessageTokenCost(Math.max(0, Math.round(Number(e.target.value) || 0)))}
+              style={{
+                width: '100px',
+                padding: '0.5rem',
+                borderRadius: '8px',
+                background: '#0d111c',
+                border: '1px solid var(--accent-orange)',
+                color: '#fff',
+                fontSize: '0.95rem',
+                fontWeight: 800,
+                textAlign: 'center'
+              }}
+            />
+            <span style={{ fontSize: '0.8rem', color: messageTokenCost === 0 ? '#4ade80' : 'var(--text-secondary)' }}>
+              {messageTokenCost === 0 
+                ? '🎉 Viewers can message you for FREE (0 tokens) once unlocked!' 
+                : `Viewers will pay ${messageTokenCost} FitTokens directly to you per message.`}
+            </span>
           </div>
         </div>
 
@@ -802,7 +934,11 @@ export default function VideoPublishPanel({ user, showToast, onVideoPublished })
           ) : (
             <>
               <Play size={16} fill="#fff" />
-              <span>Publish Video Masterclass ({tokenCost} Tokens • 50% Split)</span>
+              <span>
+                {tokenCost === 0 
+                  ? 'Publish Video Masterclass (Free to Watch)' 
+                  : `Publish Video Masterclass (${tokenCost} Tokens • 50% Split)`}
+              </span>
             </>
           )}
         </button>

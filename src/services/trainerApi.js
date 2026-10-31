@@ -138,4 +138,21 @@ export async function fetchMyUnlockedVideos() {
   return data.unlockedVideoIds || [];
 }
 
+// People who buy the videos can message the creator for one token
+export async function sendMessageToCreator({ videoId, message }) {
+  return callApi('/api/videos/message-creator', {
+    method: 'POST',
+    body: { videoId, message }
+  });
+}
+
+// Delete published workout video (creator or superadmin)
+export async function deleteWorkoutVideo(videoId) {
+  return callApi('/api/videos/delete', {
+    method: 'POST',
+    body: { videoId }
+  });
+}
+
+
 
